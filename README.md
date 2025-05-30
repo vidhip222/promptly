@@ -28,3 +28,46 @@ Continue building your app on:
 2. Deploy your chats from the v0 interface
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
+
+
+
+# 🚀 Promptly
+
+Promptly is a no-code platform for building **custom AI chatbots** for specific departments or domains—starting with HR. Upload documents, define your bot’s personality, and instantly deploy it via chat, Slack, or embed on your site.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer         | Technology                            |
+|---------------|----------------------------------------|
+| Frontend      | React (Next.js), TailwindCSS           |
+| Backend       | FastAPI (Python)                       |
+| LLMs          | OpenAI Chat & Assistants API           |
+| Embeddings    | OpenAI `text-embedding-3-small`        |
+| Vector DB     | Pinecone (semantic search)             |
+| File Parsing  | LangChain, PyMuPDF, docx, Unstructured |
+| Auth          | Supabase Auth (or Firebase)            |
+| Storage       | Supabase Storage / AWS S3              |
+| Database      | PostgreSQL (via Supabase or Railway)   |
+| Hosting       | Vercel (frontend), Render (backend)    |
+
+---
+
+## 💡 Features
+
+- ✨ Build custom chatbots with personas (e.g., HR Manager, IT Support)
+- 📁 Upload internal docs (PDF, DOCX, TXT, CSV)
+- 🔍 Retrieve answers based on your company's real data
+- 🔗 Deploy via shareable link, Slack, or website widget
+- 🧠 Powered by GPT-4 + semantic search
+
+---
+
+## 🧑‍💻 Local Setup Instructions
+
+### 1. Clone the Repo
+
+```bash
+git clone https://github.com/yourusername/promptly.git
+cd promptly
