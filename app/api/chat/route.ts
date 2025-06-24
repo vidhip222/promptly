@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     let documentCount = 0
     let documentList = []
 
-    // Get real bot data and documents - FIXED QUERY
+    // FIXED: Get real bot data and documents with proper error handling
     if (!isGuest && botId) {
       try {
         console.log("🔍 Checking bot:", botId)
@@ -40,37 +40,44 @@ export async function POST(request: NextRequest) {
 
           console.log("🤖 Bot found:", botConfig.name, "| Department:", botConfig.department)
 
-          // Get documents for this bot - SEPARATE QUERY
+          // FIXED: Get documents with ALL statuses, not just processed
           const { data: documents, error: docsError } = await supabaseAdmin
             .from("documents")
             .select("*")
             .eq("bot_id", botId)
-            .eq("status", "processed")
 
-          console.log("📄 Documents query result:", documents?.length || 0, "documents found")
+          console.log("📄 Raw documents query result:", documents?.length || 0, "documents found")
+          console.log(
+            "📄 Documents:",
+            documents?.map((d) => ({ name: d.name, status: d.status })),
+          )
 
           if (documents && documents.length > 0 && !docsError) {
             hasDocuments = true
             documentCount = documents.length
             documentList = documents
 
-            console.log("✅ Found", documentCount, "processed documents:")
+            console.log("✅ Found", documentCount, "documents:")
             documents.forEach((doc, index) => {
-              console.log(`  ${index + 1}. ${doc.name} (${doc.file_type})`)
+              console.log(`  ${index + 1}. ${doc.name} (Status: ${doc.status})`)
             })
 
             // Create document context with actual content
             documentContext = `You have access to ${documentCount} uploaded document(s):\n\n`
 
             for (const doc of documents) {
-              documentContext += `Document: ${doc.name}\n`
-              if (doc.content) {
+              documentContext += `Document: ${doc.name} (Status: ${doc.status})\n`
+              if (doc.content && doc.content.trim()) {
                 // Use actual document content
-                documentContext += `Content: ${doc.content.substring(0, 2000)}...\n\n`
+                documentContext += `Content: ${doc.content.substring(0, 3000)}...\n\n`
+              } else if (doc.status === "uploaded") {
+                documentContext += `Content: Document is being processed...\n\n`
+              } else {
+                documentContext += `Content: Processing failed or no content available\n\n`
               }
             }
           } else {
-            console.log("❌ No processed documents found for bot", botId)
+            console.log("❌ No documents found for bot", botId, "Error:", docsError)
           }
         } else {
           console.log("❌ Bot not found:", botError)
@@ -90,11 +97,13 @@ IMPORTANT IDENTITY:
 DOCUMENT AWARENESS:
 ${
   hasDocuments
-    ? `You have ${documentCount} document(s) uploaded and available with the following content:
+    ? `You have ${documentCount} document(s) uploaded and available:
 
 ${documentContext}
 
-ANSWER QUESTIONS using the information from these documents. If someone asks about dress code, policies, procedures, or any topic covered in your documents, provide specific answers based on the content above.
+ANSWER QUESTIONS using the information from these documents. Look for specific details like dress codes, policies, procedures, or any topic covered in your documents.
+
+If someone asks about dress code, company policies, or anything that should be in your documents, provide specific answers based on the content above.
 
 If the question is not covered in your documents, respond with: "I don't have information about that specific topic in my current documents. Please upload relevant ${botConfig.department} documents or ask questions related to the uploaded materials."`
     : `You currently have NO documents uploaded. Respond with: "I don't have any documents uploaded yet. Please upload relevant ${botConfig.department} documents first so I can assist you with specific questions about your materials."`
@@ -106,9 +115,9 @@ BEHAVIOR RULES:
 3. Be helpful and provide detailed answers when you have the information
 4. ${botConfig.instructions}
 
-Remember: You are a ${botConfig.department} bot with ${documentCount} document(s) containing specific information to help users.`
+Remember: You are ${botConfig.name}, a ${botConfig.department} specialist with ${documentCount} document(s) containing specific information to help users.`
 
-    console.log("💬 Generating response for", botConfig.department, "bot with", documentCount, "documents")
+    console.log("💬 Generating response for", botConfig.name, "with", documentCount, "documents")
 
     // Generate response using Gemini with document context
     const messages = [{ role: "user", content: message }]

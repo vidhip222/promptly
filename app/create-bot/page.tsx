@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Upload, FileText, Bot, Zap } from "lucide-react"
+import { ArrowLeft, Upload, FileText, Bot, Zap, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -62,12 +62,16 @@ export default function CreateBot() {
     { value: "detailed", label: "Detailed", description: "Thorough and comprehensive" },
   ]
 
+  // FIXED: File upload handler
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
+    console.log("📄 Files selected:", files.length)
     setBotData((prev) => ({
       ...prev,
       documents: [...prev.documents, ...files],
     }))
+    // Clear the input so same file can be selected again
+    event.target.value = ""
   }
 
   const removeDocument = (index: number) => {
@@ -329,7 +333,7 @@ export default function CreateBot() {
           </Card>
         )}
 
-        {/* Step 2: Document Upload */}
+        {/* Step 2: Document Upload - FIXED */}
         {step === 2 && (
           <Card>
             <CardHeader>
@@ -348,17 +352,22 @@ export default function CreateBot() {
                   <p className="text-lg font-medium">Upload your documents</p>
                   <p className="text-gray-600">Supports PDF, DOCX, TXT, and CSV files up to 10MB each</p>
                 </div>
+                {/* FIXED: File input */}
                 <input
                   type="file"
                   multiple
                   accept=".pdf,.docx,.txt,.csv"
                   onChange={handleFileUpload}
                   className="hidden"
-                  id="file-upload"
+                  id="file-upload-input"
                 />
-                <Label htmlFor="file-upload" className="cursor-pointer">
-                  <Button className="mt-4">Choose Files</Button>
-                </Label>
+                <Button
+                  className="mt-4"
+                  onClick={() => document.getElementById("file-upload-input")?.click()}
+                  type="button"
+                >
+                  Choose Files
+                </Button>
               </div>
 
               {botData.documents.length > 0 && (
@@ -375,7 +384,7 @@ export default function CreateBot() {
                           </div>
                         </div>
                         <Button variant="outline" size="sm" onClick={() => removeDocument(index)}>
-                          Remove
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
