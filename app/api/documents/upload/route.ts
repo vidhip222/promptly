@@ -175,6 +175,7 @@ async function processDocumentAsync(
       .from("documents")
       .update({
         status: "completed",
+        content: text,
         chunks_count: chunks.length,
         updated_at: new Date().toISOString(),
       })
