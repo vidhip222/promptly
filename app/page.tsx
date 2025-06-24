@@ -4,8 +4,9 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Bot, FileText, MessageSquare, Settings, Zap, LogOut, CreditCard, Users } from "lucide-react"
+import { Plus, Bot, FileText, MessageSquare, Settings, Zap, LogOut, CreditCard, Users, Crown } from "lucide-react"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
 
 interface ChatBot {
   id: string
@@ -16,6 +17,7 @@ interface ChatBot {
   messagesCount: number
   status: "active" | "draft"
   createdAt: string
+  template?: string
 }
 
 interface User {
@@ -27,6 +29,7 @@ interface User {
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isGuest, setIsGuest] = useState(false)
   const [bots] = useState<ChatBot[]>([
     {
       id: "1",
@@ -37,6 +40,7 @@ export default function Dashboard() {
       messagesCount: 245,
       status: "active",
       createdAt: "2024-01-15",
+      template: "hr",
     },
     {
       id: "2",
@@ -47,29 +51,47 @@ export default function Dashboard() {
       messagesCount: 156,
       status: "active",
       createdAt: "2024-01-10",
+      template: "it",
     },
     {
       id: "3",
-      name: "Sales Assistant",
-      description: "Product information and sales process guidance",
-      department: "Sales",
-      documentsCount: 5,
+      name: "Legal Assistant",
+      description: "Legal document review and compliance guidance",
+      department: "Legal",
+      documentsCount: 15,
       messagesCount: 89,
-      status: "draft",
+      status: "active",
       createdAt: "2024-01-20",
+      template: "legal",
     },
   ])
 
   useEffect(() => {
+    // Check for guest mode first
+    const guestMode = localStorage.getItem("promptly_guest_mode")
+    if (guestMode === "true") {
+      const guestUser = localStorage.getItem("promptly_guest_user")
+      if (guestUser) {
+        setUser(JSON.parse(guestUser))
+        setIsGuest(true)
+        setLoading(false)
+        return
+      }
+    }
+
     // Check authentication status
     const checkAuth = async () => {
       try {
-        const response = await fetch("/api/auth/me")
-        if (response.ok) {
-          const userData = await response.json()
-          setUser(userData)
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (user) {
+          setUser({
+            id: user.id,
+            email: user.email || "",
+            name: user.user_metadata?.name || user.email || "",
+          })
         } else {
-          // Redirect to login if not authenticated
           window.location.href = "/auth/login"
         }
       } catch (error) {
@@ -85,8 +107,14 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" })
-      window.location.href = "/auth/login"
+      if (isGuest) {
+        localStorage.removeItem("promptly_guest_mode")
+        localStorage.removeItem("promptly_guest_user")
+        window.location.href = "/auth/login"
+      } else {
+        await supabase.auth.signOut()
+        window.location.href = "/auth/login"
+      }
     } catch (error) {
       console.error("Logout failed:", error)
     }
@@ -116,28 +144,37 @@ export default function Dashboard() {
                 <Zap className="w-5 h-5 text-white" />
               </div>
               <h1 className="text-2xl font-bold text-gray-900">Promptly</h1>
+              {isGuest && (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  Demo Mode
+                </Badge>
+              )}
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600">Welcome, {user?.name || user?.email}</span>
-              <Link href="/billing">
-                <Button variant="outline" size="sm">
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Billing
-                </Button>
-              </Link>
-              <Link href="/workspace">
-                <Button variant="outline" size="sm">
-                  <Users className="w-4 h-4 mr-2" />
-                  Workspace
-                </Button>
-              </Link>
+              {!isGuest && (
+                <>
+                  <Link href="/billing">
+                    <Button variant="outline" size="sm">
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      Billing
+                    </Button>
+                  </Link>
+                  <Link href="/workspace">
+                    <Button variant="outline" size="sm">
+                      <Users className="w-4 h-4 mr-2" />
+                      Workspace
+                    </Button>
+                  </Link>
+                </>
+              )}
               <Button variant="outline" size="sm">
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
               </Button>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4 mr-2" />
-                Logout
+                {isGuest ? "Exit Demo" : "Logout"}
               </Button>
               <Link href="/create-bot">
                 <Button size="sm">
@@ -152,6 +189,27 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Demo Notice */}
+        {isGuest && (
+          <Card className="mb-6 border-green-200 bg-green-50">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Crown className="w-5 h-5 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-800">You're in Demo Mode!</p>
+                  <p className="text-sm text-green-700">
+                    Explore all features with sample data.
+                    <Link href="/auth/signup" className="underline ml-1">
+                      Sign up
+                    </Link>{" "}
+                    to save your work.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
@@ -218,7 +276,14 @@ export default function Dashboard() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg">{bot.name}</CardTitle>
-                    <Badge variant={bot.status === "active" ? "default" : "secondary"}>{bot.status}</Badge>
+                    <div className="flex items-center space-x-2">
+                      {bot.template && (
+                        <Badge variant="outline" className="text-xs">
+                          {bot.template.toUpperCase()}
+                        </Badge>
+                      )}
+                      <Badge variant={bot.status === "active" ? "default" : "secondary"}>{bot.status}</Badge>
+                    </div>
                   </div>
                   <CardDescription>{bot.description}</CardDescription>
                 </CardHeader>
@@ -264,7 +329,7 @@ export default function Dashboard() {
             <CardDescription>Get started with common tasks</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Link href="/create-bot">
                 <Button variant="outline" className="w-full h-20 flex-col space-y-2">
                   <Plus className="w-6 h-6" />
@@ -274,7 +339,13 @@ export default function Dashboard() {
               <Link href="/templates">
                 <Button variant="outline" className="w-full h-20 flex-col space-y-2">
                   <Bot className="w-6 h-6" />
-                  <span>Browse Templates</span>
+                  <span>Bot Templates</span>
+                </Button>
+              </Link>
+              <Link href="/web-crawler">
+                <Button variant="outline" className="w-full h-20 flex-col space-y-2">
+                  <FileText className="w-6 h-6" />
+                  <span>Web Crawler</span>
                 </Button>
               </Link>
               <Link href="/analytics">

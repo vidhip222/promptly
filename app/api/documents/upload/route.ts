@@ -1,120 +1,133 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { openai } from "@ai-sdk/openai"
-import { embed } from "ai"
-import { cookies } from "next/headers"
-
-// Mock document text extraction (in production, use libraries like pdf-parse, mammoth, etc.)
-async function extractTextFromFile(file: File): Promise<string> {
-  const text = await file.text()
-
-  // Simulate different file type processing
-  if (file.type === "application/pdf") {
-    return `[PDF Content] ${text.slice(0, 1000)}...`
-  } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-    return `[DOCX Content] ${text.slice(0, 1000)}...`
-  } else if (file.type === "text/csv") {
-    return `[CSV Data] ${text.slice(0, 1000)}...`
-  }
-
-  return text
-}
-
-// Chunk text into smaller pieces for better embedding
-function chunkText(text: string, chunkSize = 1000): string[] {
-  const chunks = []
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(text.slice(i, i + chunkSize))
-  }
-  return chunks
-}
+import { supabaseAdmin } from "@/lib/supabase"
+import { generateEmbedding } from "@/lib/gemini"
+import { upsertVectors } from "@/lib/pinecone"
+import { parseDocument, chunkText } from "@/lib/document-parser"
+import { v4 as uuidv4 } from "uuid"
 
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get("auth-token")
-
-    if (!authToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const user = JSON.parse(authToken.value)
     const formData = await request.formData()
-    const files = formData.getAll("files") as File[]
+    const file = formData.get("file") as File
     const botId = formData.get("botId") as string
+    const userId = formData.get("userId") as string
 
-    if (!files.length) {
-      return NextResponse.json({ error: "No files provided" }, { status: 400 })
+    if (!file || !botId || !userId) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const processedFiles = []
+    const documentId = uuidv4()
+    const fileName = `${documentId}-${file.name}`
+    const filePath = `documents/${userId}/${botId}/${fileName}`
 
-    for (const file of files) {
-      try {
-        // 1. Extract text content
-        const textContent = await extractTextFromFile(file)
+    // Upload file to Supabase Storage
+    const buffer = Buffer.from(await file.arrayBuffer())
 
-        // 2. Chunk the content
-        const chunks = chunkText(textContent)
+    const { error: uploadError } = await supabaseAdmin.storage.from("documents").upload(filePath, buffer, {
+      contentType: file.type,
+      metadata: {
+        userId,
+        botId,
+        documentId,
+        originalName: file.name,
+      },
+    })
 
-        // 3. Generate embeddings for each chunk
-        const embeddings = []
-        for (const chunk of chunks) {
-          const { embedding } = await embed({
-            model: openai.embedding("text-embedding-3-small"),
-            value: chunk,
-          })
-
-          embeddings.push({
-            text: chunk,
-            embedding,
-            metadata: {
-              fileName: file.name,
-              fileType: file.type,
-              chunkIndex: embeddings.length,
-            },
-          })
-        }
-
-        // 4. Store in mock vector database (in production, use Pinecone)
-        const fileData = {
-          id: Math.random().toString(36).substr(2, 9),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          botId,
-          userId: user.id,
-          uploadedAt: new Date().toISOString(),
-          status: "processed",
-          chunksCount: chunks.length,
-          embeddings, // In production, store in vector DB
-          textContent: textContent.slice(0, 500) + "...", // Preview
-        }
-
-        processedFiles.push(fileData)
-      } catch (error) {
-        console.error(`Error processing file ${file.name}:`, error)
-        processedFiles.push({
-          id: Math.random().toString(36).substr(2, 9),
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          botId,
-          userId: user.id,
-          uploadedAt: new Date().toISOString(),
-          status: "failed",
-          error: "Processing failed",
-        })
-      }
+    if (uploadError) {
+      console.error("Upload error:", uploadError)
+      return NextResponse.json({ error: "Upload failed" }, { status: 500 })
     }
+
+    // Store document metadata in database
+    const { error: dbError } = await supabaseAdmin.from("documents").insert({
+      id: documentId,
+      bot_id: botId,
+      user_id: userId,
+      name: file.name,
+      file_path: filePath,
+      file_size: file.size,
+      file_type: file.type,
+      status: "processing",
+    })
+
+    if (dbError) {
+      console.error("Database error:", dbError)
+      return NextResponse.json({ error: "Failed to save document metadata" }, { status: 500 })
+    }
+
+    // Process document asynchronously
+    processDocumentAsync(documentId, filePath, file.type, botId, userId, buffer)
 
     return NextResponse.json({
       success: true,
-      files: processedFiles,
-      message: `Successfully processed ${processedFiles.filter((f) => f.status === "processed").length} of ${files.length} file(s)`,
+      documentId,
+      message: "Document uploaded successfully and processing started",
     })
   } catch (error) {
-    console.error("File upload error:", error)
-    return NextResponse.json({ error: "Failed to process files" }, { status: 500 })
+    console.error("Upload error:", error)
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 })
+  }
+}
+
+async function processDocumentAsync(
+  documentId: string,
+  filePath: string,
+  fileType: string,
+  botId: string,
+  userId: string,
+  buffer: Buffer,
+) {
+  try {
+    // Parse document
+    const text = await parseDocument(buffer, fileType)
+
+    // Chunk text
+    const chunks = chunkText(text)
+
+    // Generate embeddings and store in Pinecone
+    const vectors = []
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]
+      const embedding = await generateEmbedding(chunk)
+
+      vectors.push({
+        id: `${documentId}_chunk_${i}`,
+        values: embedding,
+        metadata: {
+          documentId,
+          botId,
+          userId,
+          fileName: filePath.split("/").pop()!,
+          chunkIndex: i,
+          text: chunk,
+        },
+      })
+    }
+
+    await upsertVectors(vectors)
+
+    // Update document status
+    await supabaseAdmin
+      .from("documents")
+      .update({
+        status: "completed",
+        chunks_count: chunks.length,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", documentId)
+
+    console.log(`Document ${documentId} processed successfully`)
+  } catch (error) {
+    console.error(`Document processing failed for ${documentId}:`, error)
+
+    // Update document status to failed
+    await supabaseAdmin
+      .from("documents")
+      .update({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", documentId)
   }
 }

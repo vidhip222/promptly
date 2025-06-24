@@ -3,95 +3,120 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Zap, Mail, Lock, User, Eye, EyeOff } from "lucide-react"
-import Link from "next/link"
+import { Zap, Eye, EyeOff, Loader2 } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
-export default function Signup() {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    agreeToTerms: false,
-  })
+export default function SignupPage() {
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState(false)
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setIsLoading(true)
     setError("")
 
-    // Client-side validation
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords don't match")
-      setLoading(false)
+    // Validation
+    if (password !== confirmPassword) {
+      setError("Passwords do not match")
+      setIsLoading(false)
       return
     }
 
-    if (!formData.agreeToTerms) {
-      setError("Please agree to the terms and conditions")
-      setLoading(false)
-      return
-    }
-
-    if (formData.password.length < 6) {
+    if (password.length < 6) {
       setError("Password must be at least 6 characters")
-      setLoading(false)
+      setIsLoading(false)
+      return
+    }
+
+    if (!acceptTerms) {
+      setError("Please accept the terms and conditions")
+      setIsLoading(false)
       return
     }
 
     try {
-      console.log("Attempting signup with:", {
-        name: formData.name,
-        email: formData.email,
-      })
-
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+          },
         },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-        }),
       })
 
-      console.log("Response status:", response.status)
-
-      const data = await response.json()
-      console.log("Response data:", data)
-
-      if (response.ok && data.success) {
-        console.log("Signup successful, redirecting...")
-        // Small delay to ensure cookie is set
-        setTimeout(() => {
-          window.location.href = "/"
-        }, 100)
-      } else {
-        setError(data.error || "Signup failed")
+      if (error) {
+        setError(error.message)
+        return
       }
-    } catch (error) {
-      console.error("Signup error:", error)
-      setError("Network error. Please check your connection and try again.")
+
+      if (data.user) {
+        setSuccess(true)
+        // If email confirmation is disabled, redirect immediately
+        if (data.session) {
+          router.push("/")
+          router.refresh()
+        }
+      }
+    } catch (err) {
+      setError("An unexpected error occurred")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleGoogleSignup = () => {
-    setError("Google OAuth not configured in demo. Use the form above to continue.")
+  const handleGoogleSignUp = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+
+      if (error) {
+        setError(error.message)
+      }
+    } catch (err) {
+      setError("Failed to sign up with Google")
+    }
+  }
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center mx-auto mb-4">
+              <Zap className="w-6 h-6 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
+            <CardDescription>We've sent you a confirmation link to complete your registration</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="w-full">
+              <Link href="/auth/login">Back to login</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -99,112 +124,112 @@ export default function Signup() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <Zap className="w-7 h-7 text-white" />
+            <Zap className="w-6 h-6 text-white" />
           </div>
           <CardTitle className="text-2xl font-bold">Create your account</CardTitle>
-          <CardDescription>Start building AI chatbots for your team</CardDescription>
+          <CardDescription>Get started with Promptly today</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+
+        <CardContent className="space-y-4">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          {/* Demo Notice */}
-          <Alert>
-            <AlertDescription>
-              <strong>Demo Mode:</strong> Create an account with any details to get started.
-            </AlertDescription>
-          </Alert>
-
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="Enter your full name"
-                  value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  className="pl-10"
-                  required
-                />
-              </div>
+              <label htmlFor="name" className="text-sm font-medium">
+                Full Name
+              </label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Enter your full name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                disabled={isLoading}
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={formData.email}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                  className="pl-10"
-                  required
-                />
-              </div>
+              <label htmlFor="email" className="text-sm font-medium">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={isLoading}
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <label htmlFor="password" className="text-sm font-medium">
+                Password
+              </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Create a password (min 6 characters)"
-                  value={formData.password}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
-                  className="pl-10 pr-10"
+                  placeholder="Create a password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={6}
+                  disabled={isLoading}
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                  disabled={isLoading}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </Button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <label htmlFor="confirmPassword" className="text-sm font-medium">
+                Confirm Password
+              </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
                   placeholder="Confirm your password"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, confirmPassword: e.target.value }))}
-                  className="pl-10 pr-10"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  disabled={isLoading}
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                  disabled={isLoading}
                 >
                   {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </Button>
               </div>
             </div>
 
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="terms"
-                checked={formData.agreeToTerms}
-                onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, agreeToTerms: checked as boolean }))}
+                checked={acceptTerms}
+                onCheckedChange={(checked) => setAcceptTerms(checked as boolean)}
+                disabled={isLoading}
               />
-              <Label htmlFor="terms" className="text-sm">
+              <label htmlFor="terms" className="text-sm">
                 I agree to the{" "}
                 <Link href="/terms" className="text-blue-600 hover:underline">
                   Terms of Service
@@ -213,24 +238,31 @@ export default function Signup() {
                 <Link href="/privacy" className="text-blue-600 hover:underline">
                   Privacy Policy
                 </Link>
-              </Label>
+              </label>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Create Account"}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating account...
+                </>
+              ) : (
+                "Create account"
+              )}
             </Button>
           </form>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
+              <span className="w-full border-t" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-white px-2 text-gray-500">Or continue with</span>
             </div>
           </div>
 
-          <Button variant="outline" className="w-full" onClick={handleGoogleSignup}>
+          <Button variant="outline" className="w-full" onClick={handleGoogleSignUp} disabled={isLoading}>
             <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
@@ -252,12 +284,12 @@ export default function Signup() {
             Continue with Google
           </Button>
 
-          <p className="text-center text-sm text-gray-600">
+          <div className="text-center text-sm">
             Already have an account?{" "}
             <Link href="/auth/login" className="text-blue-600 hover:underline">
               Sign in
             </Link>
-          </p>
+          </div>
         </CardContent>
       </Card>
     </div>

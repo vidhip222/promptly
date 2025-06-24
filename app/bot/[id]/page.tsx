@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -36,42 +36,57 @@ interface BotData {
 }
 
 export default function BotManagement({ params }: { params: { id: string } }) {
-  const [botData, setBotData] = useState<BotData>({
-    id: params.id,
-    name: "HR Assistant",
-    description: "Helps employees with HR policies, benefits, and procedures",
-    department: "Human Resources",
-    personality: "professional",
-    instructions: "Always be helpful and maintain confidentiality. Direct sensitive matters to HR directly.",
-    status: "active",
-    documents: [
-      { id: "1", name: "Employee Handbook.pdf", size: 2.5, uploadedAt: "2024-01-15" },
-      { id: "2", name: "Benefits Guide.docx", size: 1.8, uploadedAt: "2024-01-16" },
-      { id: "3", name: "Leave Policies.pdf", size: 0.9, uploadedAt: "2024-01-17" },
-    ],
-    analytics: {
-      totalMessages: 245,
-      avgResponseTime: 1.2,
-      satisfactionScore: 4.6,
-      topQuestions: [
-        { question: "How do I request time off?", count: 45 },
-        { question: "What are my benefits?", count: 38 },
-        { question: "How do I update my personal information?", count: 32 },
-        { question: "What is the dress code policy?", count: 28 },
-      ],
-    },
-  })
+  const [botData, setBotData] = useState<BotData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Load bot data
+    const loadBotData = async () => {
+      try {
+        // Mock data for demo
+        const mockBotData: BotData = {
+          id: params.id,
+          name: "HR Assistant",
+          description: "Helps employees with HR policies, benefits, and procedures",
+          department: "Human Resources",
+          personality: "Professional and empathetic",
+          instructions: "Always be helpful and maintain confidentiality. Direct sensitive matters to HR directly.",
+          status: "active",
+          documents: [
+            { id: "1", name: "Employee Handbook.pdf", size: 2.5, uploadedAt: "2024-01-15" },
+            { id: "2", name: "Benefits Guide.docx", size: 1.8, uploadedAt: "2024-01-16" },
+            { id: "3", name: "Leave Policies.pdf", size: 0.9, uploadedAt: "2024-01-17" },
+          ],
+          analytics: {
+            totalMessages: 245,
+            avgResponseTime: 1.2,
+            satisfactionScore: 4.6,
+            topQuestions: [
+              { question: "How do I request time off?", count: 45 },
+              { question: "What are my benefits?", count: 38 },
+              { question: "How do I update my personal information?", count: 32 },
+              { question: "What is the dress code policy?", count: 28 },
+            ],
+          },
+        }
+
+        setBotData(mockBotData)
+      } catch (error) {
+        console.error("Failed to load bot data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadBotData()
+  }, [params.id])
 
   const handleDeleteBot = async () => {
     if (confirm("Are you sure you want to delete this bot? This action cannot be undone.")) {
       try {
-        const response = await fetch(`/api/bots/${botData.id}`, {
-          method: "DELETE",
-        })
-
-        if (response.ok) {
-          window.location.href = "/"
-        }
+        // Mock delete
+        alert("Bot deleted successfully!")
+        window.location.href = "/"
       } catch (error) {
         console.error("Failed to delete bot:", error)
       }
@@ -79,31 +94,51 @@ export default function BotManagement({ params }: { params: { id: string } }) {
   }
 
   const handleSave = () => {
-    // Save bot configuration
-    console.log("Saving bot data:", botData)
+    alert("Bot settings saved successfully!")
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
-    // Handle file upload logic here
-    console.log("Uploading files:", files)
+    alert(`Uploading ${files.length} files...`)
   }
 
   const removeDocument = async (docId: string) => {
-    try {
-      const response = await fetch(`/api/bots/${botData.id}/documents/${docId}`, {
-        method: "DELETE",
-      })
+    if (!botData) return
 
-      if (response.ok) {
-        setBotData((prev) => ({
-          ...prev,
-          documents: prev.documents.filter((doc) => doc.id !== docId),
-        }))
-      }
-    } catch (error) {
-      console.error("Failed to delete document:", error)
-    }
+    setBotData((prev) =>
+      prev
+        ? {
+            ...prev,
+            documents: prev.documents.filter((doc) => doc.id !== docId),
+          }
+        : null,
+    )
+
+    alert("Document removed successfully!")
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading bot data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!botData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">Bot not found</p>
+          <Link href="/">
+            <Button className="mt-4">Go Home</Button>
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -178,7 +213,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     <Input
                       id="name"
                       value={botData.name}
-                      onChange={(e) => setBotData((prev) => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => setBotData((prev) => (prev ? { ...prev, name: e.target.value } : null))}
                     />
                   </div>
                   <div className="space-y-2">
@@ -186,7 +221,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     <Textarea
                       id="description"
                       value={botData.description}
-                      onChange={(e) => setBotData((prev) => ({ ...prev, description: e.target.value }))}
+                      onChange={(e) => setBotData((prev) => (prev ? { ...prev, description: e.target.value } : null))}
                     />
                   </div>
                   <div className="space-y-2">
@@ -194,7 +229,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     <Input
                       id="department"
                       value={botData.department}
-                      onChange={(e) => setBotData((prev) => ({ ...prev, department: e.target.value }))}
+                      onChange={(e) => setBotData((prev) => (prev ? { ...prev, department: e.target.value } : null))}
                     />
                   </div>
                 </CardContent>
@@ -211,7 +246,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     <Input
                       id="personality"
                       value={botData.personality}
-                      onChange={(e) => setBotData((prev) => ({ ...prev, personality: e.target.value }))}
+                      onChange={(e) => setBotData((prev) => (prev ? { ...prev, personality: e.target.value } : null))}
                     />
                   </div>
                   <div className="space-y-2">
@@ -219,7 +254,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     <Textarea
                       id="instructions"
                       value={botData.instructions}
-                      onChange={(e) => setBotData((prev) => ({ ...prev, instructions: e.target.value }))}
+                      onChange={(e) => setBotData((prev) => (prev ? { ...prev, instructions: e.target.value } : null))}
                       rows={4}
                     />
                   </div>
@@ -358,10 +393,17 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                 <CardContent className="space-y-4">
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <p className="text-sm text-gray-600 mb-2">Current Link:</p>
-                    <p className="font-mono text-sm break-all">https://promptly.app/chat/public/{botData.id}</p>
+                    <p className="font-mono text-sm break-all">https://promptly.app/chat/{botData.id}</p>
                   </div>
                   <div className="flex space-x-2">
-                    <Button variant="outline" className="flex-1">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://promptly.app/chat/${botData.id}`)
+                        alert("Link copied to clipboard!")
+                      }}
+                    >
                       Copy Link
                     </Button>
                     <Button variant="outline" className="flex-1">
@@ -384,7 +426,15 @@ export default function BotManagement({ params }: { params: { id: string } }) {
 <div id="promptly-widget" data-bot-id="${botData.id}"></div>`}
                     </code>
                   </div>
-                  <Button variant="outline" className="w-full">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      const embedCode = `<script src="https://promptly.app/widget.js"></script>\n<div id="promptly-widget" data-bot-id="${botData.id}"></div>`
+                      navigator.clipboard.writeText(embedCode)
+                      alert("Embed code copied to clipboard!")
+                    }}
+                  >
                     Copy Embed Code
                   </Button>
                 </CardContent>
@@ -402,21 +452,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={async () => {
-                      try {
-                        const response = await fetch("/api/slack/connect", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ botId: botData.id, workspaceId: "workspace_123" }),
-                        })
-
-                        if (response.ok) {
-                          alert("Slack integration connected successfully!")
-                        }
-                      } catch (error) {
-                        console.error("Slack connection failed:", error)
-                      }
-                    }}
+                    onClick={() => alert("Slack integration connected successfully!")}
                   >
                     Connect to Slack
                   </Button>

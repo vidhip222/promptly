@@ -3,65 +3,79 @@
 import type React from "react"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Zap, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Zap, Eye, EyeOff, Loader2, Play } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
-export default function Login() {
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  })
+export default function LoginPage() {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setIsLoading(true)
     setError("")
 
     try {
-      console.log("Attempting login with:", { email: formData.email })
-
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       })
 
-      console.log("Response status:", response.status)
-
-      const data = await response.json()
-      console.log("Response data:", data)
-
-      if (response.ok && data.success) {
-        console.log("Login successful, redirecting...")
-        // Small delay to ensure cookie is set
-        setTimeout(() => {
-          window.location.href = "/"
-        }, 100)
-      } else {
-        setError(data.error || "Login failed")
+      if (error) {
+        setError(error.message)
+        return
       }
-    } catch (error) {
-      console.error("Login error:", error)
-      setError("Network error. Please check your connection and try again.")
+
+      if (data.user) {
+        router.push("/")
+        router.refresh()
+      }
+    } catch (err) {
+      setError("An unexpected error occurred")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleGoogleLogin = () => {
-    // For demo purposes, simulate Google login
-    setError("Google OAuth not configured in demo. Use any email/password to continue.")
+  const handleGuestDemo = () => {
+    // Set guest mode in localStorage and redirect
+    localStorage.setItem("promptly_guest_mode", "true")
+    localStorage.setItem(
+      "promptly_guest_user",
+      JSON.stringify({
+        id: "guest-user",
+        email: "demo@promptly.app",
+        name: "Demo User",
+      }),
+    )
+    router.push("/")
+  }
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+
+      if (error) {
+        setError(error.message)
+      }
+    } catch (err) {
+      setError("Failed to sign in with Google")
+    }
   }
 
   return (
@@ -69,80 +83,94 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <Zap className="w-7 h-7 text-white" />
+            <Zap className="w-6 h-6 text-white" />
           </div>
           <CardTitle className="text-2xl font-bold">Welcome to Promptly</CardTitle>
-          <CardDescription>Sign in to manage your AI chatbots</CardDescription>
+          <CardDescription>Sign in to your account or try the demo</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+
+        <CardContent className="space-y-4">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          {/* Demo Notice */}
-          <Alert>
-            <AlertDescription>
-              <strong>Demo Mode:</strong> Use any email and password to sign in.
-            </AlertDescription>
-          </Alert>
+          {/* Guest Demo Button */}
+          <Button
+            onClick={handleGuestDemo}
+            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+            size="lg"
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Try Demo (No Account Required)
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-500">Or sign in with your account</span>
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={formData.email}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                  className="pl-10"
-                  required
-                />
-              </div>
+              <label htmlFor="email" className="text-sm font-medium">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={isLoading}
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <label htmlFor="password" className="text-sm font-medium">
+                Password
+              </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
-                  value={formData.password}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
-                  className="pl-10 pr-10"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
+                  disabled={isLoading}
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                  disabled={isLoading}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </Button>
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign in"
+              )}
             </Button>
           </form>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-gray-500">Or continue with</span>
-            </div>
-          </div>
-
-          <Button variant="outline" className="w-full" onClick={handleGoogleLogin}>
+          <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
             <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
@@ -164,16 +192,17 @@ export default function Login() {
             Continue with Google
           </Button>
 
-          <div className="text-center space-y-2">
-            <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">
+          <div className="text-center text-sm">
+            <Link href="/auth/forgot-password" className="text-blue-600 hover:underline">
               Forgot your password?
             </Link>
-            <p className="text-sm text-gray-600">
-              Don't have an account?{" "}
-              <Link href="/auth/signup" className="text-blue-600 hover:underline">
-                Sign up
-              </Link>
-            </p>
+          </div>
+
+          <div className="text-center text-sm">
+            Don't have an account?{" "}
+            <Link href="/auth/signup" className="text-blue-600 hover:underline">
+              Sign up
+            </Link>
           </div>
         </CardContent>
       </Card>
