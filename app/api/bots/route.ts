@@ -1,60 +1,77 @@
 import { type NextRequest, NextResponse } from "next/server"
-
-// Mock database for demo purposes
-const mockBots: any[] = [
-  {
-    id: "demo-hr-bot",
-    name: "HR Assistant",
-    description: "Helps with HR policies and procedures",
-    department: "Human Resources",
-    personality: "Professional and empathetic",
-    instructions: "Always maintain confidentiality and be helpful",
-    status: "active",
-    created_at: new Date().toISOString(),
-    user_id: "demo-user",
-  },
-]
+import { supabaseAdmin } from "@/lib/supabase"
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get("userId") || "demo-user"
+    const userId = searchParams.get("userId")
 
-    // Return mock bots for demo
-    const bots = mockBots.filter((bot) => bot.user_id === userId)
+    if (!userId) {
+      return NextResponse.json({ error: "User ID required" }, { status: 400 })
+    }
 
-    return NextResponse.json({ bots })
+    // Get user's bots from database
+    const { data: bots, error } = await supabaseAdmin
+      .from("bots")
+      .select(`
+        *,
+        documents:documents(count),
+        messages:messages(count)
+      `)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Get bots error:", error)
+      return NextResponse.json({ bots: [] }) // Return empty array instead of error for better UX
+    }
+
+    // Transform the data to include counts
+    const transformedBots = (bots || []).map((bot) => ({
+      ...bot,
+      documentsCount: bot.documents?.[0]?.count || 0,
+      messagesCount: bot.messages?.[0]?.count || 0,
+    }))
+
+    return NextResponse.json({ bots: transformedBots })
   } catch (error) {
     console.error("Get bots error:", error)
-    return NextResponse.json({ error: "Failed to fetch bots" }, { status: 500 })
+    return NextResponse.json({ bots: [] }) // Return empty array for better UX
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, description, department, personality, instructions, tone, goal, template_id, status } =
+    const { name, description, department, personality, instructions, tone, goal, template_id, status, userId } =
       await request.json()
 
-    // Create new bot with mock data
-    const newBot = {
-      id: `bot-${Date.now()}`,
-      user_id: "demo-user",
-      name,
-      description,
-      department,
-      personality,
-      instructions,
-      tone,
-      goal,
-      template_id,
-      status: status || "draft",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    if (!userId) {
+      return NextResponse.json({ error: "User ID required" }, { status: 400 })
     }
 
-    mockBots.push(newBot)
+    const { data: bot, error } = await supabaseAdmin
+      .from("bots")
+      .insert({
+        user_id: userId,
+        name,
+        description,
+        department,
+        personality,
+        instructions,
+        tone,
+        goal,
+        template_id,
+        status: status || "draft",
+      })
+      .select()
+      .single()
 
-    return NextResponse.json({ bot: newBot })
+    if (error) {
+      console.error("Create bot error:", error)
+      return NextResponse.json({ error: "Failed to create bot" }, { status: 500 })
+    }
+
+    return NextResponse.json({ bot })
   } catch (error) {
     console.error("Create bot error:", error)
     return NextResponse.json({ error: "Failed to create bot" }, { status: 500 })

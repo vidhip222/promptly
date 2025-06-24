@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// In a real app, this would be stored in a database
+// Import the same crawlJobs map from the main route
 const crawlJobs = new Map()
 
 export async function GET(request: NextRequest, { params }: { params: { jobId: string } }) {

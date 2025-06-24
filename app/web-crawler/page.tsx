@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Globe, Zap, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
+import { ArrowLeft, Globe, Zap, AlertCircle, CheckCircle, Loader2, Eye } from "lucide-react"
 import Link from "next/link"
 
 interface CrawlJob {
@@ -20,6 +20,7 @@ interface CrawlJob {
   progress: number
   pagesFound: number
   documentsExtracted: number
+  extractedContent?: string
   error?: string
 }
 
@@ -28,6 +29,7 @@ export default function WebCrawler() {
   const [purpose, setPurpose] = useState("")
   const [crawlJobs, setCrawlJobs] = useState<CrawlJob[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedJob, setSelectedJob] = useState<CrawlJob | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -248,8 +250,14 @@ export default function WebCrawler() {
 
                       {job.status === "completed" && (
                         <div className="mt-3 flex space-x-2">
-                          <Button size="sm" variant="outline">
-                            View Documents
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedJob(job)}
+                            className="flex items-center space-x-1"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>View Content</span>
                           </Button>
                           <Button size="sm" variant="outline">
                             Assign to Bot
@@ -263,6 +271,32 @@ export default function WebCrawler() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Content Viewer Modal */}
+        {selectedJob && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-4xl max-h-[80vh] overflow-hidden">
+              <CardHeader className="border-b">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Extracted Content</CardTitle>
+                    <CardDescription>{selectedJob.url}</CardDescription>
+                  </div>
+                  <Button variant="outline" onClick={() => setSelectedJob(null)}>
+                    Close
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 overflow-y-auto max-h-[60vh]">
+                <div className="prose max-w-none">
+                  <div className="whitespace-pre-wrap text-sm">
+                    {selectedJob.extractedContent || "No content available"}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </main>
     </div>
   )

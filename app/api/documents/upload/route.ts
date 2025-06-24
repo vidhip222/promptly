@@ -16,6 +16,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    // Validate file type
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+      "text/csv",
+    ]
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 })
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: "File too large. Max size is 10MB" }, { status: 400 })
+    }
+
     const documentId = uuidv4()
     const fileName = `${documentId}-${file.name}`
     const filePath = `documents/${userId}/${botId}/${fileName}`
@@ -81,43 +97,58 @@ async function processDocumentAsync(
     // Parse document
     const text = await parseDocument(buffer, fileType)
 
+    if (!text || text.trim().length === 0) {
+      throw new Error("No text content found in document")
+    }
+
     // Chunk text
     const chunks = chunkText(text)
+
+    if (chunks.length === 0) {
+      throw new Error("No chunks generated from document")
+    }
 
     // Generate embeddings and store in Pinecone
     const vectors = []
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]
-      const embedding = await generateEmbedding(chunk)
+      try {
+        const embedding = await generateEmbedding(chunk)
 
-      vectors.push({
-        id: `${documentId}_chunk_${i}`,
-        values: embedding,
-        metadata: {
-          documentId,
-          botId,
-          userId,
-          fileName: filePath.split("/").pop()!,
-          chunkIndex: i,
-          text: chunk,
-        },
-      })
+        vectors.push({
+          id: `${documentId}_chunk_${i}`,
+          values: embedding,
+          metadata: {
+            documentId,
+            botId,
+            userId,
+            fileName: filePath.split("/").pop()!,
+            chunkIndex: i,
+            text: chunk,
+          },
+        })
+      } catch (embeddingError) {
+        console.error(`Failed to generate embedding for chunk ${i}:`, embeddingError)
+        // Continue with other chunks
+      }
     }
 
-    await upsertVectors(vectors)
+    if (vectors.length > 0) {
+      await upsertVectors(vectors)
+    }
 
     // Update document status
     await supabaseAdmin
       .from("documents")
       .update({
         status: "completed",
-        chunks_count: chunks.length,
+        chunks_count: vectors.length,
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId)
 
-    console.log(`Document ${documentId} processed successfully`)
+    console.log(`Document ${documentId} processed successfully with ${vectors.length} chunks`)
   } catch (error) {
     console.error(`Document processing failed for ${documentId}:`, error)
 
@@ -126,6 +157,7 @@ async function processDocumentAsync(
       .from("documents")
       .update({
         status: "failed",
+        error_message: error.message,
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId)
