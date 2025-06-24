@@ -11,13 +11,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 })
     }
 
+    console.log("Fetching bots for user:", userId)
+
     // Get user's bots from Supabase
     const { data: bots, error } = await supabaseAdmin
       .from("bots")
       .select(`
         *,
-        documents(count),
-        messages(count)
+        documents(id),
+        messages(id)
       `)
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
@@ -26,6 +28,8 @@ export async function GET(request: NextRequest) {
       console.error("Get bots error:", error)
       return NextResponse.json({ bots: [] })
     }
+
+    console.log("Found bots:", bots?.length || 0)
 
     // Transform the data to include counts
     const transformedBots = (bots || []).map((bot) => ({
@@ -58,6 +62,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name and description are required" }, { status: 400 })
     }
 
+    // Ensure user exists in our users table
+    const { data: existingUser, error: userCheckError } = await supabaseAdmin
+      .from("users")
+      .select("id")
+      .eq("id", userId)
+      .single()
+
+    if (userCheckError && userCheckError.code === "PGRST116") {
+      // User doesn't exist, create them
+      console.log("Creating user profile for:", userId)
+
+      // Get user info from auth
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId)
+
+      if (authError) {
+        console.error("Failed to get auth user:", authError)
+        return NextResponse.json({ error: "User authentication failed" }, { status: 401 })
+      }
+
+      const { error: createUserError } = await supabaseAdmin.from("users").insert({
+        id: userId,
+        email: authUser.user.email || "unknown@example.com",
+        name: authUser.user.user_metadata?.name || authUser.user.email?.split("@")[0] || "User",
+        subscription_plan: "free",
+      })
+
+      if (createUserError) {
+        console.error("Failed to create user profile:", createUserError)
+        return NextResponse.json({ error: "Failed to create user profile" }, { status: 500 })
+      }
+    }
+
     // Use Gemini to enhance bot configuration if it's from a template
     let enhancedConfig = {
       personality: personality || "helpful",
@@ -80,13 +116,14 @@ export async function POST(request: NextRequest) {
           personality: geminiConfig.enhancedPersonality || personality,
           instructions: geminiConfig.detailedInstructions || instructions,
         }
-        console.log("Enhanced configuration generated:", enhancedConfig)
+        console.log("Enhanced configuration generated")
       } catch (geminiError) {
         console.error("Gemini configuration error:", geminiError)
         // Continue with original config if Gemini fails
       }
     }
 
+    console.log("Inserting bot into database...")
     const { data: bot, error } = await supabaseAdmin
       .from("bots")
       .insert({
@@ -106,7 +143,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Database error: ${error.message}` }, { status: 500 })
     }
 
-    console.log("Bot created successfully:", bot)
+    console.log("Bot created successfully:", bot.id)
     return NextResponse.json({ bot })
   } catch (error) {
     console.error("Create bot error:", error)

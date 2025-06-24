@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,9 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Upload, FileText, Bot, Zap } from "lucide-react"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
+import { useRouter } from "next/navigation"
 
 export default function CreateBot() {
+  const router = useRouter()
   const [step, setStep] = useState(1)
+  const [user, setUser] = useState<any>(null)
+  const [isCreating, setIsCreating] = useState(false)
   const [botData, setBotData] = useState({
     name: "",
     description: "",
@@ -23,6 +28,20 @@ export default function CreateBot() {
     instructions: "",
     documents: [] as File[],
   })
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        router.push("/auth/login")
+      } else {
+        setUser(user)
+      }
+    }
+    checkAuth()
+  }, [router])
 
   const departments = [
     "Human Resources",
@@ -59,10 +78,92 @@ export default function CreateBot() {
   }
 
   const handleSubmit = async () => {
-    // Here you would typically send the data to your API
-    console.log("Creating bot with data:", botData)
-    // Redirect to bot management page
-    window.location.href = "/"
+    if (!user) {
+      alert("Please log in to create a bot")
+      return
+    }
+
+    if (!botData.name || !botData.description) {
+      alert("Please fill in the required fields")
+      return
+    }
+
+    setIsCreating(true)
+
+    try {
+      console.log("Creating bot for user:", user.id)
+
+      // Create bot
+      const response = await fetch("/api/bots", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          name: botData.name,
+          description: botData.description,
+          department: botData.department,
+          personality: botData.personality,
+          instructions: botData.instructions,
+          status: "active",
+        }),
+      })
+
+      const responseData = await response.json()
+      console.log("Bot creation response:", responseData)
+
+      if (response.ok && responseData.bot) {
+        const botId = responseData.bot.id
+
+        // Upload documents if any
+        if (botData.documents.length > 0) {
+          console.log("Uploading documents...")
+          for (const file of botData.documents) {
+            try {
+              const formData = new FormData()
+              formData.append("file", file)
+              formData.append("botId", botId)
+              formData.append("userId", user.id)
+
+              const uploadResponse = await fetch("/api/documents/upload", {
+                method: "POST",
+                body: formData,
+              })
+
+              if (!uploadResponse.ok) {
+                console.error("Failed to upload:", file.name)
+              }
+            } catch (uploadError) {
+              console.error("Upload error for", file.name, uploadError)
+            }
+          }
+        }
+
+        // Redirect to bot management page
+        router.push(`/bot/${botId}`)
+      } else {
+        throw new Error(responseData.error || "Failed to create bot")
+      }
+    } catch (error) {
+      console.error("Bot creation error:", error)
+      alert(`Failed to create bot: ${error.message}`)
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center mx-auto mb-4">
+            <Zap className="w-5 h-5 text-white" />
+          </div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -128,7 +229,7 @@ export default function CreateBot() {
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Bot Name</Label>
+                  <Label htmlFor="name">Bot Name *</Label>
                   <Input
                     id="name"
                     placeholder="e.g., HR Assistant"
@@ -157,7 +258,7 @@ export default function CreateBot() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">Description *</Label>
                 <Textarea
                   id="description"
                   placeholder="Describe what your bot will help with..."
@@ -197,7 +298,7 @@ export default function CreateBot() {
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={() => setStep(2)} disabled={!botData.name || !botData.department}>
+                <Button onClick={() => setStep(2)} disabled={!botData.name || !botData.description}>
                   Next: Upload Documents
                 </Button>
               </div>
@@ -284,10 +385,10 @@ export default function CreateBot() {
                         <span className="text-gray-600">Name:</span> {botData.name}
                       </p>
                       <p>
-                        <span className="text-gray-600">Department:</span> {botData.department}
+                        <span className="text-gray-600">Department:</span> {botData.department || "General"}
                       </p>
                       <p>
-                        <span className="text-gray-600">Personality:</span> {botData.personality}
+                        <span className="text-gray-600">Personality:</span> {botData.personality || "Not set"}
                       </p>
                     </div>
                   </div>
@@ -349,7 +450,9 @@ export default function CreateBot() {
                 <Button variant="outline" onClick={() => setStep(2)}>
                   Back
                 </Button>
-                <Button onClick={handleSubmit}>Deploy Bot</Button>
+                <Button onClick={handleSubmit} disabled={isCreating}>
+                  {isCreating ? "Creating Bot..." : "Deploy Bot"}
+                </Button>
               </div>
             </CardContent>
           </Card>

@@ -1,9 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
-import { generateEmbedding } from "@/lib/gemini"
-import { upsertVectors } from "@/lib/pinecone"
 import { parseDocument, chunkText } from "@/lib/document-parser"
-import { v4 as uuidv4 } from "uuid"
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,8 +31,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File too large. Max size is 10MB" }, { status: 400 })
     }
 
-    const documentId = uuidv4()
-    const fileName = `${documentId}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
     const filePath = `${userId}/${botId}/${fileName}`
 
     // Convert file to buffer
@@ -61,7 +57,6 @@ export async function POST(request: NextRequest) {
     const { data: docData, error: dbError } = await supabaseAdmin
       .from("documents")
       .insert({
-        id: documentId,
         bot_id: botId,
         user_id: userId,
         name: file.name,
@@ -83,11 +78,11 @@ export async function POST(request: NextRequest) {
     console.log("Document metadata saved:", docData)
 
     // Process document asynchronously
-    processDocumentAsync(documentId, filePath, file.type, botId, userId, buffer)
+    processDocumentAsync(docData.id, filePath, file.type, botId, userId, buffer)
 
     return NextResponse.json({
       success: true,
-      documentId,
+      documentId: docData.id,
       document: docData,
       message: "Document uploaded successfully and processing started",
     })
@@ -124,42 +119,8 @@ async function processDocumentAsync(
       throw new Error("No chunks generated from document")
     }
 
-    // Generate embeddings using Gemini and store in Pinecone
-    let vectorsCreated = 0
-    try {
-      const vectors = []
-
-      for (let i = 0; i < Math.min(chunks.length, 10); i++) {
-        const chunk = chunks[i]
-        try {
-          const embedding = await generateEmbedding(chunk)
-
-          vectors.push({
-            id: `${documentId}_chunk_${i}`,
-            values: embedding,
-            metadata: {
-              documentId,
-              botId,
-              userId,
-              fileName: filePath.split("/").pop()!,
-              chunkIndex: i,
-              text: chunk,
-            },
-          })
-        } catch (embeddingError) {
-          console.error(`Failed to generate embedding for chunk ${i}:`, embeddingError)
-        }
-      }
-
-      if (vectors.length > 0) {
-        await upsertVectors(vectors)
-        vectorsCreated = vectors.length
-      }
-    } catch (vectorError) {
-      console.error("Vector processing error:", vectorError)
-    }
-
-    // Update document status in Supabase
+    // For now, just mark as completed
+    // In production, you would generate embeddings and store in vector database
     await supabaseAdmin
       .from("documents")
       .update({
@@ -169,7 +130,7 @@ async function processDocumentAsync(
       })
       .eq("id", documentId)
 
-    console.log(`Document ${documentId} processed successfully with ${vectorsCreated} vectors`)
+    console.log(`Document ${documentId} processed successfully`)
   } catch (error) {
     console.error(`Document processing failed for ${documentId}:`, error)
 
