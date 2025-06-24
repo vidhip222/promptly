@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Globe, Zap, AlertCircle, CheckCircle, Loader2, Eye } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ArrowLeft, Globe, Zap, AlertCircle, CheckCircle, Loader2, Eye, Download, Bot } from "lucide-react"
 import Link from "next/link"
 
 interface CrawlJob {
@@ -27,9 +28,28 @@ interface CrawlJob {
 export default function WebCrawler() {
   const [url, setUrl] = useState("")
   const [purpose, setPurpose] = useState("")
+  const [selectedBotId, setSelectedBotId] = useState("")
   const [crawlJobs, setCrawlJobs] = useState<CrawlJob[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedJob, setSelectedJob] = useState<CrawlJob | null>(null)
+  const [userBots, setUserBots] = useState([])
+
+  // Load user's bots on component mount
+  React.useEffect(() => {
+    loadUserBots()
+  }, [])
+
+  const loadUserBots = async () => {
+    try {
+      const response = await fetch("/api/bots")
+      if (response.ok) {
+        const data = await response.json()
+        setUserBots(data.bots || [])
+      }
+    } catch (error) {
+      console.error("Failed to load bots:", error)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,6 +105,69 @@ export default function WebCrawler() {
         clearInterval(interval)
       }
     }, 2000)
+  }
+
+  const downloadAsPDF = async (job: CrawlJob) => {
+    try {
+      const response = await fetch("/api/web-crawler/export", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jobId: job.id,
+          content: job.extractedContent,
+          url: job.url,
+          purpose: job.purpose,
+        }),
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const downloadUrl = window.URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = downloadUrl
+        link.download = `crawl-${job.id}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(downloadUrl)
+      }
+    } catch (error) {
+      console.error("Download failed:", error)
+      alert("Failed to download PDF")
+    }
+  }
+
+  const applyToBot = async (job: CrawlJob) => {
+    if (!selectedBotId) {
+      alert("Please select a bot first")
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/bots/${selectedBotId}/apply-crawl`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jobId: job.id,
+          content: job.extractedContent,
+          url: job.url,
+          purpose: job.purpose,
+        }),
+      })
+
+      if (response.ok) {
+        alert("Content successfully applied to bot!")
+      } else {
+        throw new Error("Failed to apply to bot")
+      }
+    } catch (error) {
+      console.error("Apply to bot failed:", error)
+      alert("Failed to apply content to bot")
+    }
   }
 
   const getStatusIcon = (status: CrawlJob["status"]) => {
@@ -249,19 +332,51 @@ export default function WebCrawler() {
                       )}
 
                       {job.status === "completed" && (
-                        <div className="mt-3 flex space-x-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setSelectedJob(job)}
-                            className="flex items-center space-x-1"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span>View Content</span>
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            Assign to Bot
-                          </Button>
+                        <div className="mt-3 space-y-3">
+                          <div className="flex space-x-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSelectedJob(job)}
+                              className="flex items-center space-x-1"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>View Content</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => downloadAsPDF(job)}
+                              className="flex items-center space-x-1"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Download PDF</span>
+                            </Button>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <Select value={selectedBotId} onValueChange={setSelectedBotId}>
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Select a bot to apply content" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {userBots.map((bot: any) => (
+                                  <SelectItem key={bot.id} value={bot.id}>
+                                    {bot.name} ({bot.department})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              onClick={() => applyToBot(job)}
+                              disabled={!selectedBotId}
+                              className="flex items-center space-x-1"
+                            >
+                              <Bot className="w-3 h-3" />
+                              <span>Apply to Bot</span>
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
