@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Upload, FileText, Bot, Zap } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
@@ -20,6 +19,7 @@ export default function CreateBot() {
   const [step, setStep] = useState(1)
   const [user, setUser] = useState<any>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [botData, setBotData] = useState({
     name: "",
     description: "",
@@ -88,12 +88,17 @@ export default function CreateBot() {
       return
     }
 
+    if (botData.documents.length === 0) {
+      alert("Please upload at least one document for your bot to learn from")
+      return
+    }
+
     setIsCreating(true)
 
     try {
       console.log("Creating bot for user:", user.id)
 
-      // Create bot
+      // Create bot first
       const response = await fetch("/api/bots", {
         method: "POST",
         headers: {
@@ -106,7 +111,7 @@ export default function CreateBot() {
           department: botData.department,
           personality: botData.personality,
           instructions: botData.instructions,
-          status: "active",
+          status: "draft", // Start as draft until documents are processed
         }),
       })
 
@@ -116,32 +121,50 @@ export default function CreateBot() {
       if (response.ok && responseData.bot) {
         const botId = responseData.bot.id
 
-        // Upload documents if any
-        if (botData.documents.length > 0) {
-          console.log("Uploading documents...")
-          for (const file of botData.documents) {
-            try {
-              const formData = new FormData()
-              formData.append("file", file)
-              formData.append("botId", botId)
-              formData.append("userId", user.id)
+        // Upload documents
+        console.log("Uploading", botData.documents.length, "documents...")
+        let successfulUploads = 0
 
-              const uploadResponse = await fetch("/api/documents/upload", {
-                method: "POST",
-                body: formData,
-              })
+        for (const file of botData.documents) {
+          try {
+            const formData = new FormData()
+            formData.append("file", file)
+            formData.append("botId", botId)
+            formData.append("userId", user.id)
 
-              if (!uploadResponse.ok) {
-                console.error("Failed to upload:", file.name)
-              }
-            } catch (uploadError) {
-              console.error("Upload error for", file.name, uploadError)
+            const uploadResponse = await fetch("/api/documents/upload", {
+              method: "POST",
+              body: formData,
+            })
+
+            if (uploadResponse.ok) {
+              successfulUploads++
+              console.log("✅ Uploaded:", file.name)
+            } else {
+              console.error("❌ Failed to upload:", file.name)
             }
+          } catch (uploadError) {
+            console.error("Upload error for", file.name, uploadError)
           }
         }
 
-        // Redirect to bot management page
-        router.push(`/bot/${botId}`)
+        if (successfulUploads > 0) {
+          // Activate bot after successful document uploads
+          await fetch(`/api/bots/${botId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              status: "active",
+            }),
+          })
+
+          console.log("✅ Bot activated with", successfulUploads, "documents")
+          router.push(`/bot/${botId}`)
+        } else {
+          throw new Error("No documents were uploaded successfully")
+        }
       } else {
         throw new Error(responseData.error || "Failed to create bot")
       }
@@ -210,7 +233,7 @@ export default function CreateBot() {
             </h2>
             <p className="text-gray-600 mt-1">
               {step === 1 && "Define your bot's personality and purpose"}
-              {step === 2 && "Upload documents for your bot to learn from"}
+              {step === 2 && "Upload documents for your bot to learn from (Required)"}
               {step === 3 && "Review your settings and deploy your bot"}
             </p>
           </div>
@@ -312,9 +335,11 @@ export default function CreateBot() {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <FileText className="w-5 h-5" />
-                <span>Upload Documents</span>
+                <span>Upload Documents (Required)</span>
               </CardTitle>
-              <CardDescription>Upload documents that your bot will use to answer questions</CardDescription>
+              <CardDescription>
+                Upload documents that your bot will use to answer questions. At least one document is required.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
@@ -338,7 +363,7 @@ export default function CreateBot() {
 
               {botData.documents.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="font-medium">Uploaded Documents</h3>
+                  <h3 className="font-medium">Uploaded Documents ({botData.documents.length})</h3>
                   <div className="space-y-2">
                     {botData.documents.map((file, index) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -362,7 +387,9 @@ export default function CreateBot() {
                 <Button variant="outline" onClick={() => setStep(1)}>
                   Back
                 </Button>
-                <Button onClick={() => setStep(3)}>Next: Review & Deploy</Button>
+                <Button onClick={() => setStep(3)} disabled={botData.documents.length === 0}>
+                  Next: Review & Deploy
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -407,42 +434,25 @@ export default function CreateBot() {
                 </div>
 
                 <div>
-                  <h3 className="font-medium text-gray-900">Documents</h3>
+                  <h3 className="font-medium text-gray-900">Documents ({botData.documents.length})</h3>
                   <div className="mt-2 space-y-2">
-                    {botData.documents.length === 0 ? (
-                      <p className="text-gray-600">No documents uploaded</p>
-                    ) : (
-                      botData.documents.map((file, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <FileText className="w-4 h-4 text-gray-600" />
-                          <span className="text-sm">{file.name}</span>
-                        </div>
-                      ))
-                    )}
+                    {botData.documents.map((file, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <FileText className="w-4 h-4 text-gray-600" />
+                        <span className="text-sm">{file.name}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
               <div className="border-t pt-6">
-                <h3 className="font-medium text-gray-900 mb-3">Deployment Options</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium">Chat Interface</h4>
-                    <p className="text-sm text-gray-600 mt-1">Direct chat on your dashboard</p>
-                    <Badge className="mt-2">Included</Badge>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium">Shareable Link</h4>
-                    <p className="text-sm text-gray-600 mt-1">Public link for external access</p>
-                    <Badge className="mt-2">Included</Badge>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium">Website Widget</h4>
-                    <p className="text-sm text-gray-600 mt-1">Embed on your website</p>
-                    <Badge variant="secondary" className="mt-2">
-                      Coming Soon
-                    </Badge>
-                  </div>
+                <h3 className="font-medium text-gray-900 mb-3">Deployment Process</h3>
+                <div className="space-y-2 text-sm text-gray-600">
+                  <p>1. Create bot with your configuration</p>
+                  <p>2. Upload and process all documents</p>
+                  <p>3. Train bot on document content</p>
+                  <p>4. Activate bot for use</p>
                 </div>
               </div>
 
