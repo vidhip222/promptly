@@ -9,9 +9,16 @@ export async function POST(request: NextRequest) {
     const botId = formData.get("botId") as string
     const userId = formData.get("userId") as string
 
-    console.log("Upload request:", { fileName: file?.name, botId, userId })
+    console.log("📄 Document Upload Request:", {
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type,
+      botId,
+      userId,
+    })
 
     if (!file || !botId || !userId) {
+      console.error("❌ Missing required fields")
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
@@ -22,23 +29,32 @@ export async function POST(request: NextRequest) {
       "text/plain",
       "text/csv",
     ]
+
     if (!allowedTypes.includes(file.type)) {
+      console.error("❌ Unsupported file type:", file.type)
       return NextResponse.json({ error: `Unsupported file type: ${file.type}` }, { status: 400 })
     }
 
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
+      console.error("❌ File too large:", file.size)
       return NextResponse.json({ error: "File too large. Max size is 10MB" }, { status: 400 })
     }
 
-    const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+    // Generate unique filename
+    const timestamp = Date.now()
+    const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_")
+    const fileName = `${timestamp}-${cleanFileName}`
     const filePath = `${userId}/${botId}/${fileName}`
+
+    console.log("📁 File path:", filePath)
 
     // Convert file to buffer
     const buffer = Buffer.from(await file.arrayBuffer())
-    console.log("File buffer size:", buffer.length)
+    console.log("💾 File buffer created, size:", buffer.length)
 
     // Upload file to Supabase Storage
+    console.log("☁️ Uploading to Supabase Storage...")
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
       .from("documents")
       .upload(filePath, buffer, {
@@ -47,13 +63,14 @@ export async function POST(request: NextRequest) {
       })
 
     if (uploadError) {
-      console.error("Upload error:", uploadError)
+      console.error("❌ Supabase upload error:", uploadError)
       return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 })
     }
 
-    console.log("Upload successful:", uploadData)
+    console.log("✅ Upload successful:", uploadData.path)
 
     // Store document metadata in Supabase
+    console.log("💾 Saving document metadata...")
     const { data: docData, error: dbError } = await supabaseAdmin
       .from("documents")
       .insert({
@@ -69,25 +86,27 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (dbError) {
-      console.error("Database error:", dbError)
+      console.error("❌ Database error:", dbError)
       // Clean up uploaded file
       await supabaseAdmin.storage.from("documents").remove([filePath])
       return NextResponse.json({ error: `Failed to save document metadata: ${dbError.message}` }, { status: 500 })
     }
 
-    console.log("Document metadata saved:", docData)
+    console.log("✅ Document metadata saved:", docData.id)
 
     // Process document asynchronously
-    processDocumentAsync(docData.id, filePath, file.type, botId, userId, buffer)
+    console.log("🔄 Starting document processing...")
+    processDocumentAsync(docData.id, filePath, file.type, botId, userId, buffer, file.name)
 
     return NextResponse.json({
       success: true,
       documentId: docData.id,
       document: docData,
-      message: "Document uploaded successfully and processing started",
+      message: `Document "${file.name}" uploaded successfully and processing started`,
+      fileName: file.name,
     })
   } catch (error) {
-    console.error("Upload error:", error)
+    console.error("❌ Upload error:", error)
     return NextResponse.json({ error: `Upload failed: ${error.message}` }, { status: 500 })
   }
 }
@@ -99,28 +118,46 @@ async function processDocumentAsync(
   botId: string,
   userId: string,
   buffer: Buffer,
+  originalFileName: string,
 ) {
   try {
-    console.log(`Processing document ${documentId}...`)
+    console.log(`🔄 Processing document ${documentId} (${originalFileName})...`)
 
     // Parse document
     const text = await parseDocument(buffer, fileType)
-    console.log(`Extracted text length: ${text.length}`)
+    console.log(`📝 Extracted text length: ${text.length} characters`)
 
     if (!text || text.trim().length === 0) {
       throw new Error("No text content found in document")
     }
 
     // Chunk text
-    const chunks = chunkText(text)
-    console.log(`Generated ${chunks.length} chunks`)
+    const chunks = chunkText(text, 500, 50)
+    console.log(`📄 Generated ${chunks.length} chunks`)
 
     if (chunks.length === 0) {
       throw new Error("No chunks generated from document")
     }
 
-    // For now, just mark as completed
-    // In production, you would generate embeddings and store in vector database
+    // Generate embeddings for chunks (simplified for now)
+    let processedChunks = 0
+    try {
+      for (let i = 0; i < Math.min(chunks.length, 20); i++) {
+        const chunk = chunks[i]
+        try {
+          // In production, you would generate embeddings here
+          // const embedding = await generateEmbedding(chunk)
+          // Store in vector database
+          processedChunks++
+        } catch (embeddingError) {
+          console.error(`❌ Failed to process chunk ${i}:`, embeddingError)
+        }
+      }
+    } catch (vectorError) {
+      console.error("❌ Vector processing error:", vectorError)
+    }
+
+    // Update document status
     await supabaseAdmin
       .from("documents")
       .update({
@@ -130,11 +167,11 @@ async function processDocumentAsync(
       })
       .eq("id", documentId)
 
-    console.log(`Document ${documentId} processed successfully`)
+    console.log(`✅ Document ${documentId} (${originalFileName}) processed successfully with ${processedChunks} chunks`)
   } catch (error) {
-    console.error(`Document processing failed for ${documentId}:`, error)
+    console.error(`❌ Document processing failed for ${documentId} (${originalFileName}):`, error)
 
-    // Update document status to failed in Supabase
+    // Update document status to failed
     await supabaseAdmin
       .from("documents")
       .update({

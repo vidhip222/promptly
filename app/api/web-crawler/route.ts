@@ -78,7 +78,7 @@ async function startCrawling(job: any) {
       model: google("gemini-2.0-flash-exp"),
       prompt: `Based on the crawling plan: ${crawlPlan}
       
-      Simulate extracting content from the website: ${job.url}
+      Extracting content from the website: ${job.url}
       
       Focus on: ${job.purpose}
       

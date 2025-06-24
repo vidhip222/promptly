@@ -5,7 +5,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Users, Bot, Shield, Briefcase, Headphones, DollarSign, Zap, Check } from "lucide-react"
+import { ArrowLeft, Users, Bot, Shield, Briefcase, Headphones, DollarSign, Zap, Check, Upload } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -40,7 +40,7 @@ export default function Templates() {
       icon: <Users className="w-6 h-6" />,
       personality: "Professional, empathetic, and confidential",
       instructions:
-        "You are an HR assistant. Always maintain confidentiality, be empathetic to employee concerns, and direct sensitive matters to human HR representatives. Provide clear, accurate information about company policies.",
+        "You are an HR assistant specializing in Human Resources. ONLY answer questions based on uploaded HR documents. If asked about topics not covered in your documents, respond: 'I don't have information about that in my current HR documents. Please upload relevant HR documents or contact HR directly.' Always maintain confidentiality and direct sensitive matters to human HR representatives.",
       tone: "Professional yet approachable",
       goal: "Help employees with HR-related questions while maintaining confidentiality",
       features: [
@@ -50,7 +50,7 @@ export default function Templates() {
         "Performance review info",
       ],
       sampleDocuments: ["Employee Handbook.pdf", "Benefits Guide.docx", "Leave Policies.pdf", "Code of Conduct.pdf"],
-      documentsIncluded: 12,
+      documentsIncluded: 0, // Templates start with 0 documents - user uploads their own
       popular: true,
       color: "bg-blue-500",
     },
@@ -62,7 +62,7 @@ export default function Templates() {
       icon: <Bot className="w-6 h-6" />,
       personality: "Technical, patient, and solution-oriented",
       instructions:
-        "You are an IT support specialist. Provide step-by-step troubleshooting guidance, explain technical concepts clearly, and escalate complex issues to human IT staff when needed.",
+        "You are an IT support specialist. ONLY provide solutions based on uploaded IT documentation and manuals. If asked about issues not covered in your documents, respond: 'I don't have information about that in my current IT documents. Please upload relevant technical documentation or contact IT support directly.' Provide step-by-step troubleshooting guidance and escalate complex issues when needed.",
       tone: "Technical but easy to understand",
       goal: "Resolve common IT issues and guide users through technical problems",
       features: [
@@ -77,7 +77,7 @@ export default function Templates() {
         "Security Policies.pdf",
         "Hardware Specs.xlsx",
       ],
-      documentsIncluded: 8,
+      documentsIncluded: 0,
       popular: true,
       color: "bg-green-500",
     },
@@ -89,7 +89,7 @@ export default function Templates() {
       icon: <Shield className="w-6 h-6" />,
       personality: "Precise, cautious, and detail-oriented",
       instructions:
-        "You are a legal compliance assistant. Provide accurate information about regulations and policies, but always remind users that this is not legal advice and they should consult with legal professionals for complex matters.",
+        "You are a legal compliance assistant. ONLY provide information based on uploaded legal documents and compliance materials. If asked about matters not covered in your documents, respond: 'I don't have information about that in my current legal documents. Please upload relevant legal documentation or consult with legal professionals directly.' Always remind users that this is not legal advice and they should consult with legal professionals for complex matters.",
       tone: "Formal and precise",
       goal: "Provide compliance guidance while emphasizing the need for professional legal consultation",
       features: ["Regulatory compliance", "Policy interpretation", "Legal document guidance", "Audit preparation"],
@@ -99,7 +99,7 @@ export default function Templates() {
         "Regulatory Guidelines.pdf",
         "Audit Checklist.xlsx",
       ],
-      documentsIncluded: 6,
+      documentsIncluded: 0,
       popular: false,
       color: "bg-purple-500",
     },
@@ -111,12 +111,12 @@ export default function Templates() {
       icon: <Headphones className="w-6 h-6" />,
       personality: "Friendly, helpful, and customer-focused",
       instructions:
-        "You are a customer support representative. Be friendly and helpful, focus on solving customer problems quickly, and escalate complex issues to human agents when needed.",
+        "You are a customer support representative. ONLY answer questions based on uploaded product documentation, FAQs, and support materials. If asked about topics not covered in your documents, respond: 'I don't have information about that in my current support documents. Please upload relevant product documentation or contact our support team directly.' Be friendly and helpful, focus on solving customer problems quickly.",
       tone: "Friendly and solution-focused",
       goal: "Provide excellent customer service and resolve issues efficiently",
       features: ["Product information", "Order assistance", "Return policies", "Technical support"],
       sampleDocuments: ["Product Catalog.pdf", "FAQ Database.docx", "Return Policy.pdf", "Support Procedures.pdf"],
-      documentsIncluded: 15,
+      documentsIncluded: 0,
       popular: false,
       color: "bg-orange-500",
     },
@@ -128,12 +128,12 @@ export default function Templates() {
       icon: <DollarSign className="w-6 h-6" />,
       personality: "Persuasive, knowledgeable, and results-driven",
       instructions:
-        "You are a sales assistant. Help qualify leads, provide product information, and guide prospects through the sales process. Always be helpful and focus on customer needs.",
+        "You are a sales assistant. ONLY provide information based on uploaded sales materials, product catalogs, and pricing documents. If asked about topics not covered in your documents, respond: 'I don't have information about that in my current sales documents. Please upload relevant sales materials or contact our sales team directly.' Help qualify leads, provide product information, and guide prospects through the sales process.",
       tone: "Professional and persuasive",
       goal: "Support the sales process and help convert leads into customers",
       features: ["Product demonstrations", "Pricing information", "Lead qualification", "Sales process guidance"],
       sampleDocuments: ["Product Catalog.pdf", "Pricing Sheets.xlsx", "Sales Scripts.docx", "Competitor Analysis.pdf"],
-      documentsIncluded: 10,
+      documentsIncluded: 0,
       popular: false,
       color: "bg-yellow-500",
     },
@@ -145,7 +145,7 @@ export default function Templates() {
       icon: <Briefcase className="w-6 h-6" />,
       personality: "Systematic, detail-oriented, and process-focused",
       instructions:
-        "You are an operations assistant. Help users understand processes and procedures, ensure compliance with operational standards, and provide clear step-by-step guidance.",
+        "You are an operations assistant. ONLY provide guidance based on uploaded operational procedures, process documentation, and workflow materials. If asked about processes not covered in your documents, respond: 'I don't have information about that in my current operations documents. Please upload relevant process documentation or contact the operations team directly.' Help users understand processes and procedures, ensure compliance with operational standards.",
       tone: "Clear and systematic",
       goal: "Ensure smooth operations by providing process guidance and documentation",
       features: ["Process documentation", "Standard operating procedures", "Quality control", "Workflow optimization"],
@@ -155,7 +155,7 @@ export default function Templates() {
         "Quality Guidelines.pdf",
         "Safety Protocols.pdf",
       ],
-      documentsIncluded: 9,
+      documentsIncluded: 0,
       popular: false,
       color: "bg-indigo-500",
     },
@@ -203,6 +203,7 @@ export default function Templates() {
       console.log("Bot creation response:", responseData)
 
       if (response.ok && responseData.bot) {
+        // Redirect to bot management page where user can upload their own documents
         router.push(`/bot/${responseData.bot.id}`)
       } else {
         throw new Error(responseData.error || "Failed to create bot")
@@ -236,6 +237,16 @@ export default function Templates() {
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900">Bot Templates</h2>
           <p className="text-gray-600 mt-2">Get started quickly with pre-configured bots for specific departments</p>
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Upload className="w-5 h-5 text-blue-600" />
+              <p className="text-blue-800 font-medium">Templates come ready to customize</p>
+            </div>
+            <p className="text-blue-700 text-sm mt-1">
+              Each template creates a specialized bot. You'll upload your own documents to train it with your specific
+              content.
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -277,9 +288,9 @@ export default function Templates() {
                     <p className="text-sm font-medium">{template.personality}</p>
                   </div>
 
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Sample docs:</span>
-                    <span className="font-medium">{template.documentsIncluded} included</span>
+                  <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                    <p className="text-xs text-yellow-700 mb-1">📄 Documents:</p>
+                    <p className="text-sm text-yellow-800">Upload your own documents after creation</p>
                   </div>
 
                   <Button

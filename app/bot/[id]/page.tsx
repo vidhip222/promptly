@@ -10,9 +10,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Bot, FileText, Settings, BarChart3, Share, Zap, Trash2, Upload } from "lucide-react"
+import { ArrowLeft, Bot, FileText, Settings, BarChart3, Share, Zap, Trash2, Upload, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
+import { useRouter } from "next/navigation"
 
 interface BotData {
   id: string
@@ -25,8 +26,9 @@ interface BotData {
   documents: Array<{
     id: string
     name: string
-    size: number
-    uploadedAt: string
+    file_size: number
+    created_at: string
+    status: string
   }>
   analytics: {
     totalMessages: number
@@ -37,88 +39,151 @@ interface BotData {
 }
 
 export default function BotManagement({ params }: { params: { id: string } }) {
+  const router = useRouter()
   const [botData, setBotData] = useState<BotData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
+  const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    // Load bot data
-    const loadBotData = async () => {
-      try {
-        // Mock data for demo
-        const mockBotData: BotData = {
-          id: params.id,
-          name: "HR Assistant",
-          description: "Helps employees with HR policies, benefits, and procedures",
-          department: "Human Resources",
-          personality: "Professional and empathetic",
-          instructions: "Always be helpful and maintain confidentiality. Direct sensitive matters to HR directly.",
-          status: "active",
-          documents: [
-            { id: "1", name: "Employee Handbook.pdf", size: 2.5, uploadedAt: "2024-01-15" },
-            { id: "2", name: "Benefits Guide.docx", size: 1.8, uploadedAt: "2024-01-16" },
-            { id: "3", name: "Leave Policies.pdf", size: 0.9, uploadedAt: "2024-01-17" },
-          ],
-          analytics: {
-            totalMessages: 245,
-            avgResponseTime: 1.2,
-            satisfactionScore: 4.6,
-            topQuestions: [
-              { question: "How do I request time off?", count: 45 },
-              { question: "What are my benefits?", count: 38 },
-              { question: "How do I update my personal information?", count: 32 },
-              { question: "What is the dress code policy?", count: 28 },
-            ],
-          },
-        }
-
-        setBotData(mockBotData)
-      } catch (error) {
-        console.error("Failed to load bot data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadBotData()
-  }, [params.id])
-
-  const handleDeleteBot = async () => {
-    if (confirm("Are you sure you want to delete this bot? This action cannot be undone.")) {
-      try {
-        // Mock delete
-        alert("Bot deleted successfully!")
-        window.location.href = "/"
-      } catch (error) {
-        console.error("Failed to delete bot:", error)
-      }
-    }
-  }
-
-  const handleSave = () => {
-    alert("Bot settings saved successfully!")
-  }
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || [])
-    if (files.length === 0) return
-
-    try {
-      // Get current user
+    const checkAuth = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser()
       if (!user) {
-        alert("Please log in to upload documents")
-        return
+        router.push("/auth/login")
+      } else {
+        setUser(user)
+        loadBotData()
+      }
+    }
+    checkAuth()
+  }, [router])
+
+  const loadBotData = async () => {
+    try {
+      // For demo, use mock data
+      const mockBotData: BotData = {
+        id: params.id,
+        name: "HR Assistant",
+        description: "Helps employees with HR policies, benefits, and procedures",
+        department: "Human Resources",
+        personality: "Professional and empathetic",
+        instructions:
+          "Always be helpful and maintain confidentiality. Direct sensitive matters to HR directly. ONLY answer questions based on uploaded documents.",
+        status: "active",
+        documents: [],
+        analytics: {
+          totalMessages: 245,
+          avgResponseTime: 1.2,
+          satisfactionScore: 4.6,
+          topQuestions: [
+            { question: "How do I request time off?", count: 45 },
+            { question: "What are my benefits?", count: 38 },
+            { question: "How do I update my personal information?", count: 32 },
+            { question: "What is the dress code policy?", count: 28 },
+          ],
+        },
       }
 
+      // Try to get real data from API
+      try {
+        const response = await fetch(`/api/bots/${params.id}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.bot) {
+            setBotData({
+              ...data.bot,
+              documents: data.bot.documents || [],
+              analytics: mockBotData.analytics, // Use mock analytics for now
+            })
+          } else {
+            setBotData(mockBotData)
+          }
+        } else {
+          setBotData(mockBotData)
+        }
+      } catch (error) {
+        console.error("Failed to load bot data:", error)
+        setBotData(mockBotData)
+      }
+    } catch (error) {
+      console.error("Failed to load bot data:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteBot = async () => {
+    if (!confirm("Are you sure you want to delete this bot? This action cannot be undone.")) {
+      return
+    }
+
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/bots/${params.id}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        alert("Bot deleted successfully!")
+        router.push("/")
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to delete bot")
+      }
+    } catch (error) {
+      console.error("Failed to delete bot:", error)
+      alert(`Failed to delete bot: ${error.message}`)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!botData) return
+
+    try {
+      const response = await fetch(`/api/bots/${params.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: botData.name,
+          description: botData.description,
+          department: botData.department,
+          personality: botData.personality,
+          instructions: botData.instructions,
+        }),
+      })
+
+      if (response.ok) {
+        alert("Bot settings saved successfully!")
+      } else {
+        throw new Error("Failed to save settings")
+      }
+    } catch (error) {
+      console.error("Failed to save bot:", error)
+      alert("Failed to save settings")
+    }
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || [])
+    if (files.length === 0 || !user) return
+
+    setUploading(true)
+
+    try {
       for (const file of files) {
+        console.log(`📄 Uploading: ${file.name}`)
+
         const formData = new FormData()
         formData.append("file", file)
         formData.append("botId", params.id)
         formData.append("userId", user.id)
-
-        console.log("Uploading file:", file.name)
 
         const response = await fetch("/api/documents/upload", {
           method: "POST",
@@ -140,38 +205,59 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                       {
                         id: result.document.id,
                         name: result.document.name,
-                        size: Math.round((result.document.file_size / 1024 / 1024) * 100) / 100,
-                        uploadedAt: new Date().toISOString().split("T")[0],
+                        file_size: result.document.file_size,
+                        created_at: result.document.created_at,
+                        status: result.document.status,
                       },
                     ],
                   }
                 : null,
             )
           }
-          alert(`${file.name} uploaded successfully!`)
+          alert(`✅ ${result.fileName} uploaded successfully!`)
         } else {
           throw new Error(result.error || "Upload failed")
         }
       }
     } catch (error) {
       console.error("Upload error:", error)
-      alert(`Upload failed: ${error.message}`)
+      alert(`❌ Upload failed: ${error.message}`)
+    } finally {
+      setUploading(false)
+      // Clear the input
+      event.target.value = ""
     }
   }
 
   const removeDocument = async (docId: string) => {
     if (!botData) return
 
-    setBotData((prev) =>
-      prev
-        ? {
-            ...prev,
-            documents: prev.documents.filter((doc) => doc.id !== docId),
-          }
-        : null,
-    )
+    if (!confirm("Are you sure you want to remove this document?")) {
+      return
+    }
 
-    alert("Document removed successfully!")
+    try {
+      const response = await fetch(`/api/bots/${params.id}/documents/${docId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setBotData((prev) =>
+          prev
+            ? {
+                ...prev,
+                documents: prev.documents.filter((doc) => doc.id !== docId),
+              }
+            : null,
+        )
+        alert("Document removed successfully!")
+      } else {
+        throw new Error("Failed to remove document")
+      }
+    } catch (error) {
+      console.error("Failed to remove document:", error)
+      alert("Failed to remove document")
+    }
   }
 
   if (loading) {
@@ -221,9 +307,9 @@ export default function BotManagement({ params }: { params: { id: string } }) {
               <Button size="sm" onClick={handleSave}>
                 Save Changes
               </Button>
-              <Button variant="destructive" size="sm" onClick={handleDeleteBot}>
+              <Button variant="destructive" size="sm" onClick={handleDeleteBot} disabled={deleting}>
                 <Trash2 className="w-4 h-4 mr-2" />
-                Delete Bot
+                {deleting ? "Deleting..." : "Delete Bot"}
               </Button>
             </div>
           </div>
@@ -236,15 +322,15 @@ export default function BotManagement({ params }: { params: { id: string } }) {
           <p className="text-gray-600 mt-1">{botData.description}</p>
         </div>
 
-        <Tabs defaultValue="settings" className="space-y-6">
+        <Tabs defaultValue="documents" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="settings" className="flex items-center space-x-2">
-              <Settings className="w-4 h-4" />
-              <span>Settings</span>
-            </TabsTrigger>
             <TabsTrigger value="documents" className="flex items-center space-x-2">
               <FileText className="w-4 h-4" />
               <span>Documents</span>
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center space-x-2">
+              <Settings className="w-4 h-4" />
+              <span>Settings</span>
             </TabsTrigger>
             <TabsTrigger value="analytics" className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
@@ -255,6 +341,87 @@ export default function BotManagement({ params }: { params: { id: string } }) {
               <span>Deploy</span>
             </TabsTrigger>
           </TabsList>
+
+          {/* Documents Tab - Now First */}
+          <TabsContent value="documents">
+            <Card>
+              <CardHeader>
+                <CardTitle>Knowledge Base</CardTitle>
+                <CardDescription>
+                  Upload documents that your bot will use to answer questions. The bot will ONLY answer based on these
+                  documents.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {botData.documents.length === 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-2">
+                      <AlertCircle className="w-5 h-5 text-yellow-600" />
+                      <p className="text-yellow-800 font-medium">No documents uploaded</p>
+                    </div>
+                    <p className="text-yellow-700 text-sm mt-1">
+                      Your bot needs documents to answer questions. Upload relevant files to get started.
+                    </p>
+                  </div>
+                )}
+
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600 mb-3">Upload documents (PDF, DOCX, TXT, CSV) - Max 10MB each</p>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.docx,.txt,.csv"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="document-upload"
+                    disabled={uploading}
+                  />
+                  <Label htmlFor="document-upload" className="cursor-pointer">
+                    <Button variant="outline" disabled={uploading}>
+                      {uploading ? "Uploading..." : "Choose Files"}
+                    </Button>
+                  </Label>
+                </div>
+
+                {botData.documents.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-medium">Current Documents ({botData.documents.length})</h3>
+                    <div className="space-y-2">
+                      {botData.documents.map((doc) => (
+                        <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            <FileText className="w-5 h-5 text-gray-600" />
+                            <div>
+                              <p className="font-medium">{doc.name}</p>
+                              <p className="text-sm text-gray-600">
+                                {(doc.file_size / 1024 / 1024).toFixed(2)} MB •
+                                <Badge
+                                  variant={
+                                    doc.status === "completed"
+                                      ? "default"
+                                      : doc.status === "failed"
+                                        ? "destructive"
+                                        : "secondary"
+                                  }
+                                  className="ml-2"
+                                >
+                                  {doc.status}
+                                </Badge>
+                              </p>
+                            </div>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => removeDocument(doc.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Settings Tab */}
           <TabsContent value="settings">
@@ -314,59 +481,13 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                       onChange={(e) => setBotData((prev) => (prev ? { ...prev, instructions: e.target.value } : null))}
                       rows={4}
                     />
+                    <p className="text-xs text-gray-600">
+                      Note: Bot will only answer questions based on uploaded documents
+                    </p>
                   </div>
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
-
-          {/* Documents Tab */}
-          <TabsContent value="documents">
-            <Card>
-              <CardHeader>
-                <CardTitle>Knowledge Base</CardTitle>
-                <CardDescription>Manage documents that your bot learns from</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-3">Upload additional documents (PDF, DOCX, TXT, CSV)</p>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.docx,.txt,.csv"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="document-upload"
-                  />
-                  <Label htmlFor="document-upload" className="cursor-pointer">
-                    <Button variant="outline">Choose Files</Button>
-                  </Label>
-                </div>
-
-                <div className="space-y-3">
-                  <h3 className="font-medium">Current Documents</h3>
-                  <div className="space-y-2">
-                    {botData.documents.map((doc) => (
-                      <div key={doc.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <FileText className="w-5 h-5 text-gray-600" />
-                          <div>
-                            <p className="font-medium">{doc.name}</p>
-                            <p className="text-sm text-gray-600">
-                              {doc.size} MB • Uploaded {doc.uploadedAt}
-                            </p>
-                          </div>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => removeDocument(doc.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
 
           {/* Analytics Tab */}
@@ -493,41 +614,6 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     }}
                   >
                     Copy Embed Code
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Slack Integration</CardTitle>
-                  <CardDescription>Add your bot to Slack workspace</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-gray-600">
-                    Connect your bot to Slack to allow team members to interact with it directly in channels.
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => alert("Slack integration connected successfully!")}
-                  >
-                    Connect to Slack
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>API Access</CardTitle>
-                  <CardDescription>Integrate via REST API</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-600 mb-2">API Endpoint:</p>
-                    <p className="font-mono text-sm">POST https://api.promptly.app/v1/chat/{botData.id}</p>
-                  </div>
-                  <Button variant="outline" className="w-full">
-                    View API Docs
                   </Button>
                 </CardContent>
               </Card>
