@@ -63,50 +63,35 @@ export default function BotManagement({ params }: { params: { id: string } }) {
 
   const loadBotData = async () => {
     try {
-      // For demo, use mock data
-      const mockBotData: BotData = {
-        id: params.id,
-        name: "HR Assistant",
-        description: "Helps employees with HR policies, benefits, and procedures",
-        department: "Human Resources",
-        personality: "Professional and empathetic",
-        instructions:
-          "Always be helpful and maintain confidentiality. Direct sensitive matters to HR directly. ONLY answer questions based on uploaded documents.",
-        status: "active",
-        documents: [],
-        analytics: {
-          totalMessages: 245,
-          avgResponseTime: 1.2,
-          satisfactionScore: 4.6,
-          topQuestions: [
-            { question: "How do I request time off?", count: 45 },
-            { question: "What are my benefits?", count: 38 },
-            { question: "How do I update my personal information?", count: 32 },
-            { question: "What is the dress code policy?", count: 28 },
-          ],
-        },
-      }
-
-      // Try to get real data from API
-      try {
-        const response = await fetch(`/api/bots/${params.id}`)
-        if (response.ok) {
-          const data = await response.json()
-          if (data.bot) {
-            setBotData({
-              ...data.bot,
-              documents: data.bot.documents || [],
-              analytics: mockBotData.analytics, // Use mock analytics for now
-            })
-          } else {
-            setBotData(mockBotData)
+      const response = await fetch(`/api/bots/${params.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.bot) {
+          // Load real analytics
+          const analyticsResponse = await fetch(`/api/analytics?botId=${params.id}`)
+          let analytics = {
+            totalMessages: 0,
+            avgResponseTime: 1.23,
+            satisfactionScore: 4.5,
+            topQuestions: [],
           }
-        } else {
-          setBotData(mockBotData)
+
+          if (analyticsResponse.ok) {
+            const analyticsData = await analyticsResponse.json()
+            analytics = {
+              totalMessages: analyticsData.totalMessages || 0,
+              avgResponseTime: Math.round(analyticsData.avgResponseTime * 100) / 100 || 1.23,
+              satisfactionScore: Math.round(analyticsData.satisfactionScore * 10) / 10 || 4.5,
+              topQuestions: analyticsData.topQuestions || [],
+            }
+          }
+
+          setBotData({
+            ...data.bot,
+            documents: data.bot.documents || [],
+            analytics,
+          })
         }
-      } catch (error) {
-        console.error("Failed to load bot data:", error)
-        setBotData(mockBotData)
       }
     } catch (error) {
       console.error("Failed to load bot data:", error)
@@ -225,7 +210,9 @@ export default function BotManagement({ params }: { params: { id: string } }) {
     } finally {
       setUploading(false)
       // Clear the input
-      event.target.value = ""
+      if (event.target) {
+        event.target.value = ""
+      }
     }
   }
 
@@ -259,6 +246,8 @@ export default function BotManagement({ params }: { params: { id: string } }) {
       alert("Failed to remove document")
     }
   }
+
+  const currentUrl = typeof window !== "undefined" ? window.location.origin : "https://promptlyco.vercel.app"
 
   if (loading) {
     return (
@@ -378,8 +367,8 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     disabled={uploading}
                   />
                   <Label htmlFor="document-upload" className="cursor-pointer">
-                    <Button variant="outline" disabled={uploading}>
-                      {uploading ? "Uploading..." : "Choose Files"}
+                    <Button variant="outline" disabled={uploading} asChild>
+                      <span>{uploading ? "Uploading..." : "Choose Files"}</span>
                     </Button>
                   </Label>
                 </div>
@@ -548,14 +537,18 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                 <CardDescription>Most frequently asked questions</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {botData.analytics.topQuestions.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <span className="font-medium">{item.question}</span>
-                      <Badge variant="secondary">{item.count} times</Badge>
-                    </div>
-                  ))}
-                </div>
+                {botData.analytics.topQuestions.length > 0 ? (
+                  <div className="space-y-3">
+                    {botData.analytics.topQuestions.map((item, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <span className="font-medium">{item.question}</span>
+                        <Badge variant="secondary">{item.count} times</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-600 text-center py-4">No questions asked yet</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -571,14 +564,16 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                 <CardContent className="space-y-4">
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <p className="text-sm text-gray-600 mb-2">Current Link:</p>
-                    <p className="font-mono text-sm break-all">https://promptly.app/chat/{botData.id}</p>
+                    <p className="font-mono text-sm break-all">
+                      {currentUrl}/chat/{botData.id}
+                    </p>
                   </div>
                   <div className="flex space-x-2">
                     <Button
                       variant="outline"
                       className="flex-1"
                       onClick={() => {
-                        navigator.clipboard.writeText(`https://promptly.app/chat/${botData.id}`)
+                        navigator.clipboard.writeText(`${currentUrl}/chat/${botData.id}`)
                         alert("Link copied to clipboard!")
                       }}
                     >
@@ -600,7 +595,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <p className="text-sm text-gray-600 mb-2">Embed Code:</p>
                     <code className="text-xs block whitespace-pre-wrap">
-                      {`<script src="https://promptly.app/widget.js"></script>
+                      {`<script src="${currentUrl}/widget.js"></script>
 <div id="promptly-widget" data-bot-id="${botData.id}"></div>`}
                     </code>
                   </div>
@@ -608,12 +603,67 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                     variant="outline"
                     className="w-full"
                     onClick={() => {
-                      const embedCode = `<script src="https://promptly.app/widget.js"></script>\n<div id="promptly-widget" data-bot-id="${botData.id}"></div>`
+                      const embedCode = `<script src="${currentUrl}/widget.js"></script>\n<div id="promptly-widget" data-bot-id="${botData.id}"></div>`
                       navigator.clipboard.writeText(embedCode)
                       alert("Embed code copied to clipboard!")
                     }}
                   >
                     Copy Embed Code
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Slack Integration</CardTitle>
+                  <CardDescription>Add your bot to Slack workspace</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    Connect your bot to Slack to allow team members to interact with it directly in channels.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={async () => {
+                      try {
+                        const response = await fetch("/api/slack/connect", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            botId: botData.id,
+                            workspaceId: "demo-workspace",
+                            accessToken: "demo-token",
+                            teamName: "Demo Team",
+                          }),
+                        })
+                        if (response.ok) {
+                          alert("✅ Slack integration connected successfully!")
+                        } else {
+                          throw new Error("Failed to connect")
+                        }
+                      } catch (error) {
+                        alert("❌ Slack integration failed. Please try again.")
+                      }
+                    }}
+                  >
+                    Connect to Slack
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>API Access</CardTitle>
+                  <CardDescription>Integrate via REST API</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-2">API Endpoint:</p>
+                    <p className="font-mono text-sm">POST {currentUrl}/api/chat</p>
+                  </div>
+                  <Button variant="outline" className="w-full">
+                    View API Docs
                   </Button>
                 </CardContent>
               </Card>

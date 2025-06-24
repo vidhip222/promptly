@@ -1,9 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "ai"
-import { google } from "@ai-sdk/google"
-
-// Store crawl jobs in memory (in production, use Supabase)
-const crawlJobs = new Map()
+import { supabaseAdmin } from "@/lib/supabase"
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,10 +9,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "URL and purpose are required" }, { status: 400 })
     }
 
-    // Create crawl job
-    const jobId = `crawl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    console.log("🕷️ Starting web crawl for:", url)
 
-    const job = {
+    // Create crawl job
+    const jobId = Math.random().toString(36).substr(2, 9)
+    const crawlJob = {
       id: jobId,
       url,
       purpose,
@@ -28,86 +25,106 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
     }
 
-    crawlJobs.set(jobId, job)
+    // Store job in database
+    await supabaseAdmin.from("crawl_jobs").insert({
+      id: jobId,
+      url,
+      purpose,
+      status: "pending",
+      progress: 0,
+      pages_found: 0,
+      documents_extracted: 0,
+      extracted_content: "",
+    })
 
-    // Start crawling process using Gemini 2.0 Flash
-    startCrawling(job)
+    // Start crawling process
+    setTimeout(async () => {
+      try {
+        console.log("🔍 Crawling website:", url)
 
-    return NextResponse.json(job)
+        // Update status to crawling
+        await supabaseAdmin.from("crawl_jobs").update({ status: "crawling", progress: 10 }).eq("id", jobId)
+
+        // Simulate crawling with actual fetch
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": "Promptly Web Crawler 1.0",
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch ${url}: ${response.status}`)
+        }
+
+        const html = await response.text()
+        console.log("📄 Fetched HTML content, length:", html.length)
+
+        // Update progress
+        await supabaseAdmin
+          .from("crawl_jobs")
+          .update({ status: "processing", progress: 50, pages_found: 1 })
+          .eq("id", jobId)
+
+        // Extract text content from HTML
+        const textContent = extractTextFromHTML(html, purpose)
+        console.log("📝 Extracted text content, length:", textContent.length)
+
+        // Update progress
+        await supabaseAdmin.from("crawl_jobs").update({ progress: 80, documents_extracted: 1 }).eq("id", jobId)
+
+        // Final update with completed status
+        await supabaseAdmin
+          .from("crawl_jobs")
+          .update({
+            status: "completed",
+            progress: 100,
+            extracted_content: textContent,
+          })
+          .eq("id", jobId)
+
+        console.log("✅ Web crawl completed successfully for:", url)
+      } catch (error) {
+        console.error("❌ Crawl failed:", error)
+        await supabaseAdmin
+          .from("crawl_jobs")
+          .update({
+            status: "failed",
+            error: error.message,
+          })
+          .eq("id", jobId)
+      }
+    }, 1000)
+
+    return NextResponse.json(crawlJob)
   } catch (error) {
     console.error("Web crawler error:", error)
     return NextResponse.json({ error: "Failed to start crawling" }, { status: 500 })
   }
 }
 
-async function startCrawling(job: any) {
-  try {
-    // Update status to crawling
-    job.status = "crawling"
-    job.progress = 10
-    crawlJobs.set(job.id, job)
+function extractTextFromHTML(html: string, purpose: string): string {
+  // Remove script and style elements
+  let text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
 
-    // Use Gemini 2.0 Flash to analyze the website and determine what to crawl
-    const { text: crawlPlan } = await generateText({
-      model: google("gemini-2.0-flash-exp"),
-      prompt: `You are a web crawler AI. Analyze this website URL: ${job.url}
-      
-      Purpose: ${job.purpose}
-      
-      Create a detailed crawling plan that identifies:
-      1. What specific pages or sections to focus on based on the purpose
-      2. What type of content to extract (text, headings, lists, etc.)
-      3. How to organize the extracted content for AI training
-      
-      Respond with a structured plan in 200-300 words.`,
-    })
+  // Remove HTML tags
+  text = text.replace(/<[^>]*>/g, " ")
 
-    job.progress = 30
-    job.pagesFound = Math.floor(Math.random() * 50) + 10
-    crawlJobs.set(job.id, job)
+  // Clean up whitespace
+  text = text.replace(/\s+/g, " ").trim()
 
-    // Simulate crawling delay
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+  // Extract relevant sections based on purpose
+  const lines = text.split(/[.!?]+/).filter((line) => line.trim().length > 20)
 
-    job.status = "processing"
-    job.progress = 60
-    crawlJobs.set(job.id, job)
+  // Filter content based on purpose keywords
+  const purposeKeywords = purpose.toLowerCase().split(/\s+/)
+  const relevantLines = lines.filter((line) => {
+    const lineLower = line.toLowerCase()
+    return purposeKeywords.some((keyword) => lineLower.includes(keyword))
+  })
 
-    // Use Gemini 2.0 Flash to extract and process content
-    const { text: extractedContent } = await generateText({
-      model: google("gemini-2.0-flash-exp"),
-      prompt: `Based on the crawling plan: ${crawlPlan}
-      
-      Extracting content from the website: ${job.url}
-      
-      Focus on: ${job.purpose}
-      
-      Generate realistic, structured content that would be found on such a website. Include:
-      - Main headings and sections
-      - Key information relevant to the purpose
-      - FAQ-style content if applicable
-      - Important details and procedures
-      
-      Format the content in a clean, organized way that would be useful for training an AI bot.
-      Make it comprehensive (500-800 words) and realistic for the given URL and purpose.`,
-    })
+  // If no relevant content found, return first part of general content
+  const finalContent = relevantLines.length > 0 ? relevantLines.join(". ") : lines.slice(0, 10).join(". ")
 
-    job.progress = 90
-    job.documentsExtracted = Math.floor(Math.random() * 20) + 5
-    job.extractedContent = extractedContent
-    crawlJobs.set(job.id, job)
-
-    // Final processing
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    job.status = "completed"
-    job.progress = 100
-    crawlJobs.set(job.id, job)
-
-    console.log(`Crawl job ${job.id} completed using Gemini 2.0 Flash`)
-  } catch (error) {
-    console.error(`Crawl job ${job.id} failed:`, error)
-    job.status = "failed"
-    job.error = "Failed to crawl website. Please check the URL and try again."
-    crawlJobs.set(job.id, job)
-  }
+  return finalContent.substring(0, 5000) // Limit to 5000 characters
 }
