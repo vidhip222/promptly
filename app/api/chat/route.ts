@@ -13,10 +13,11 @@ export async function POST(request: NextRequest) {
     const botConfig = {
       name: "AI Assistant",
       personality: "helpful and professional",
-      instructions: "You are a helpful AI assistant. Provide clear, accurate, and helpful responses.",
+      instructions:
+        "You are a helpful AI assistant. Provide clear, accurate, and helpful responses using Gemini 2.0 Flash.",
     }
 
-    // Generate response using Gemini
+    // Generate response using Gemini 2.0 Flash
     const messages = [{ role: "user", content: message }]
     const response = await generateChatResponse(messages, undefined, botConfig)
 

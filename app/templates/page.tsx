@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Users, Bot, Shield, Briefcase, Headphones, DollarSign, Zap, Check } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase"
 
 interface Template {
   id: string
@@ -164,6 +165,20 @@ export default function Templates() {
     setCreatingBot(template.id)
 
     try {
+      // Get current user
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+
+      if (authError || !user) {
+        alert("Please log in to create a bot")
+        router.push("/auth/login")
+        return
+      }
+
+      console.log("Creating bot for user:", user.id)
+
       // Create bot with template data
       const response = await fetch("/api/bots", {
         method: "POST",
@@ -171,6 +186,7 @@ export default function Templates() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          userId: user.id,
           name: template.name,
           description: template.description,
           department: template.department,
@@ -183,15 +199,17 @@ export default function Templates() {
         }),
       })
 
-      if (response.ok) {
-        const bot = await response.json()
-        router.push(`/bot/${bot.id}`)
+      const responseData = await response.json()
+      console.log("Bot creation response:", responseData)
+
+      if (response.ok && responseData.bot) {
+        router.push(`/bot/${responseData.bot.id}`)
       } else {
-        throw new Error("Failed to create bot")
+        throw new Error(responseData.error || "Failed to create bot")
       }
     } catch (error) {
       console.error("Error creating bot:", error)
-      alert("Failed to create bot. Please try again.")
+      alert(`Failed to create bot: ${error.message}`)
     } finally {
       setCreatingBot(null)
     }

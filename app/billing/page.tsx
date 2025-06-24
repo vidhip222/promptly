@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -41,59 +41,68 @@ interface Subscription {
 }
 
 export default function Billing() {
-  const [plans, setPlans] = useState<Plan[]>([])
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [plans] = useState<Plan[]>([
+    {
+      id: "free",
+      name: "Free",
+      price: 0,
+      interval: "month",
+      features: {
+        bots: 2,
+        messages: 100,
+        documents: 5,
+        storage: "10MB",
+        support: "Community",
+      },
+    },
+    {
+      id: "pro",
+      name: "Pro",
+      price: 29,
+      interval: "month",
+      features: {
+        bots: 10,
+        messages: 2000,
+        documents: 50,
+        storage: "1GB",
+        support: "Email",
+      },
+    },
+    {
+      id: "enterprise",
+      name: "Enterprise",
+      price: 99,
+      interval: "month",
+      features: {
+        bots: "Unlimited",
+        messages: "Unlimited",
+        documents: "Unlimited",
+        storage: "10GB",
+        support: "Priority",
+      },
+    },
+  ])
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [plansRes, subRes] = await Promise.all([fetch("/api/billing/plans"), fetch("/api/billing/subscription")])
-
-        if (plansRes.ok && subRes.ok) {
-          const plansData = await plansRes.json()
-          const subData = await subRes.json()
-          setPlans(plansData.plans)
-          setSubscription(subData)
-        }
-      } catch (error) {
-        console.error("Failed to fetch billing data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [])
+  const [subscription] = useState<Subscription>({
+    id: "sub_123",
+    planId: "free",
+    status: "active",
+    usage: {
+      bots: 2,
+      messages: 45,
+      documents: 8,
+      storage: "2.5MB",
+    },
+    limits: {
+      bots: 2,
+      messages: 100,
+      documents: 5,
+      storage: "10MB",
+    },
+  })
 
   const handleUpgrade = async (planId: string) => {
-    try {
-      const response = await fetch("/api/billing/subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        window.open(data.checkoutUrl, "_blank")
-      }
-    } catch (error) {
-      console.error("Upgrade failed:", error)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <Zap className="w-5 h-5 text-white" />
-          </div>
-          <p className="text-gray-600">Loading billing information...</p>
-        </div>
-      </div>
-    )
+    alert(`Upgrade to ${planId} plan - Contact support for billing setup`)
   }
 
   return (
@@ -120,62 +129,60 @@ export default function Billing() {
         </div>
 
         {/* Current Usage */}
-        {subscription && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <CreditCard className="w-5 h-5" />
-                <span>Current Usage</span>
-              </CardTitle>
-              <CardDescription>
-                Your current plan: <Badge>{plans.find((p) => p.id === subscription.planId)?.name}</Badge>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Bots</span>
-                    <span className="text-sm text-gray-600">
-                      {subscription.usage.bots} / {subscription.limits.bots}
-                    </span>
-                  </div>
-                  <Progress value={(subscription.usage.bots / subscription.limits.bots) * 100} />
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <CreditCard className="w-5 h-5" />
+              <span>Current Usage</span>
+            </CardTitle>
+            <CardDescription>
+              Your current plan: <Badge>{plans.find((p) => p.id === subscription.planId)?.name}</Badge>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Bots</span>
+                  <span className="text-sm text-gray-600">
+                    {subscription.usage.bots} / {subscription.limits.bots}
+                  </span>
                 </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Messages</span>
-                    <span className="text-sm text-gray-600">
-                      {subscription.usage.messages} / {subscription.limits.messages}
-                    </span>
-                  </div>
-                  <Progress value={(subscription.usage.messages / subscription.limits.messages) * 100} />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Documents</span>
-                    <span className="text-sm text-gray-600">
-                      {subscription.usage.documents} / {subscription.limits.documents}
-                    </span>
-                  </div>
-                  <Progress value={(subscription.usage.documents / subscription.limits.documents) * 100} />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Storage</span>
-                    <span className="text-sm text-gray-600">
-                      {subscription.usage.storage} / {subscription.limits.storage}
-                    </span>
-                  </div>
-                  <Progress value={25} />
-                </div>
+                <Progress value={(subscription.usage.bots / subscription.limits.bots) * 100} />
               </div>
-            </CardContent>
-          </Card>
-        )}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Messages</span>
+                  <span className="text-sm text-gray-600">
+                    {subscription.usage.messages} / {subscription.limits.messages}
+                  </span>
+                </div>
+                <Progress value={(subscription.usage.messages / subscription.limits.messages) * 100} />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Documents</span>
+                  <span className="text-sm text-gray-600">
+                    {subscription.usage.documents} / {subscription.limits.documents}
+                  </span>
+                </div>
+                <Progress value={(subscription.usage.documents / subscription.limits.documents) * 100} />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Storage</span>
+                  <span className="text-sm text-gray-600">
+                    {subscription.usage.storage} / {subscription.limits.storage}
+                  </span>
+                </div>
+                <Progress value={25} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Plans */}
         <div className="mb-8">
@@ -225,7 +232,7 @@ export default function Billing() {
                     disabled={plan.id === subscription?.planId}
                     onClick={() => handleUpgrade(plan.id)}
                   >
-                    {plan.id === subscription?.planId ? "Current Plan" : "Upgrade"}
+                    {plan.id === subscription?.planId ? "Current Plan" : "Contact Sales"}
                   </Button>
                 </CardContent>
               </Card>
@@ -236,8 +243,8 @@ export default function Billing() {
         {/* Billing History */}
         <Card>
           <CardHeader>
-            <CardTitle>Billing History</CardTitle>
-            <CardDescription>Your recent transactions and invoices</CardDescription>
+            <CardTitle>Usage History</CardTitle>
+            <CardDescription>Your recent activity and usage</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">

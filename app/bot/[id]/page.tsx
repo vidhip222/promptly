@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, Bot, FileText, Settings, BarChart3, Share, Zap, Trash2, Upload } from "lucide-react"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
 
 interface BotData {
   id: string
@@ -97,9 +98,65 @@ export default function BotManagement({ params }: { params: { id: string } }) {
     alert("Bot settings saved successfully!")
   }
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
-    alert(`Uploading ${files.length} files...`)
+    if (files.length === 0) return
+
+    try {
+      // Get current user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        alert("Please log in to upload documents")
+        return
+      }
+
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("botId", params.id)
+        formData.append("userId", user.id)
+
+        console.log("Uploading file:", file.name)
+
+        const response = await fetch("/api/documents/upload", {
+          method: "POST",
+          body: formData,
+        })
+
+        const result = await response.json()
+        console.log("Upload result:", result)
+
+        if (response.ok) {
+          // Add document to local state
+          if (botData && result.document) {
+            setBotData((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    documents: [
+                      ...prev.documents,
+                      {
+                        id: result.document.id,
+                        name: result.document.name,
+                        size: Math.round((result.document.file_size / 1024 / 1024) * 100) / 100,
+                        uploadedAt: new Date().toISOString().split("T")[0],
+                      },
+                    ],
+                  }
+                : null,
+            )
+          }
+          alert(`${file.name} uploaded successfully!`)
+        } else {
+          throw new Error(result.error || "Upload failed")
+        }
+      }
+    } catch (error) {
+      console.error("Upload error:", error)
+      alert(`Upload failed: ${error.message}`)
+    }
   }
 
   const removeDocument = async (docId: string) => {

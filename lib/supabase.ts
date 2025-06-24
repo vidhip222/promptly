@@ -1,14 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 
 /* -------------------------------------------------------------------------- */
-/*                              Type-safe Database                             */
-/* -------------------------------------------------------------------------- */
-/* If you have a generated Database type from `supabase gen types`, import it.
-   Otherwise you can delete the import below or keep `any`.              */
-// import type { Database } from "./database-types"
-type Database = any
-
-/* -------------------------------------------------------------------------- */
 /*                          Browser (public) client                           */
 /* -------------------------------------------------------------------------- */
 
@@ -22,7 +14,7 @@ if (!publicUrl || !publicKey) {
   )
 }
 
-export const supabase = createClient<Database>(publicUrl, publicKey, {
+export const supabase = createClient(publicUrl, publicKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
@@ -35,7 +27,7 @@ export const supabase = createClient<Database>(publicUrl, publicKey, {
 
 export const supabaseAdmin =
   typeof window === "undefined"
-    ? createClient<Database>(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "", {
+    ? createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "", {
         auth: { autoRefreshToken: false, persistSession: false },
       })
     : null

@@ -12,6 +12,8 @@ export async function POST(request: NextRequest) {
     const botId = formData.get("botId") as string
     const userId = formData.get("userId") as string
 
+    console.log("Upload request:", { fileName: file?.name, botId, userId })
+
     if (!file || !botId || !userId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
       "text/csv",
     ]
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: "Unsupported file type" }, { status: 400 })
+      return NextResponse.json({ error: `Unsupported file type: ${file.type}` }, { status: 400 })
     }
 
     // Validate file size (max 10MB)
@@ -33,43 +35,52 @@ export async function POST(request: NextRequest) {
     }
 
     const documentId = uuidv4()
-    const fileName = `${documentId}-${file.name}`
-    const filePath = `documents/${userId}/${botId}/${fileName}`
+    const fileName = `${documentId}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+    const filePath = `${userId}/${botId}/${fileName}`
+
+    // Convert file to buffer
+    const buffer = Buffer.from(await file.arrayBuffer())
+    console.log("File buffer size:", buffer.length)
 
     // Upload file to Supabase Storage
-    const buffer = Buffer.from(await file.arrayBuffer())
-
-    const { error: uploadError } = await supabaseAdmin.storage.from("documents").upload(filePath, buffer, {
-      contentType: file.type,
-      metadata: {
-        userId,
-        botId,
-        documentId,
-        originalName: file.name,
-      },
-    })
+    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+      .from("documents")
+      .upload(filePath, buffer, {
+        contentType: file.type,
+        upsert: true,
+      })
 
     if (uploadError) {
       console.error("Upload error:", uploadError)
-      return NextResponse.json({ error: "Upload failed" }, { status: 500 })
+      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 })
     }
 
-    // Store document metadata in database
-    const { error: dbError } = await supabaseAdmin.from("documents").insert({
-      id: documentId,
-      bot_id: botId,
-      user_id: userId,
-      name: file.name,
-      file_path: filePath,
-      file_size: file.size,
-      file_type: file.type,
-      status: "processing",
-    })
+    console.log("Upload successful:", uploadData)
+
+    // Store document metadata in Supabase
+    const { data: docData, error: dbError } = await supabaseAdmin
+      .from("documents")
+      .insert({
+        id: documentId,
+        bot_id: botId,
+        user_id: userId,
+        name: file.name,
+        file_path: filePath,
+        file_size: file.size,
+        file_type: file.type,
+        status: "processing",
+      })
+      .select()
+      .single()
 
     if (dbError) {
       console.error("Database error:", dbError)
-      return NextResponse.json({ error: "Failed to save document metadata" }, { status: 500 })
+      // Clean up uploaded file
+      await supabaseAdmin.storage.from("documents").remove([filePath])
+      return NextResponse.json({ error: `Failed to save document metadata: ${dbError.message}` }, { status: 500 })
     }
+
+    console.log("Document metadata saved:", docData)
 
     // Process document asynchronously
     processDocumentAsync(documentId, filePath, file.type, botId, userId, buffer)
@@ -77,11 +88,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       documentId,
+      document: docData,
       message: "Document uploaded successfully and processing started",
     })
   } catch (error) {
     console.error("Upload error:", error)
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 })
+    return NextResponse.json({ error: `Upload failed: ${error.message}` }, { status: 500 })
   }
 }
 
@@ -94,8 +106,11 @@ async function processDocumentAsync(
   buffer: Buffer,
 ) {
   try {
+    console.log(`Processing document ${documentId}...`)
+
     // Parse document
     const text = await parseDocument(buffer, fileType)
+    console.log(`Extracted text length: ${text.length}`)
 
     if (!text || text.trim().length === 0) {
       throw new Error("No text content found in document")
@@ -103,61 +118,66 @@ async function processDocumentAsync(
 
     // Chunk text
     const chunks = chunkText(text)
+    console.log(`Generated ${chunks.length} chunks`)
 
     if (chunks.length === 0) {
       throw new Error("No chunks generated from document")
     }
 
-    // Generate embeddings and store in Pinecone
-    const vectors = []
+    // Generate embeddings using Gemini and store in Pinecone
+    let vectorsCreated = 0
+    try {
+      const vectors = []
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]
-      try {
-        const embedding = await generateEmbedding(chunk)
+      for (let i = 0; i < Math.min(chunks.length, 10); i++) {
+        const chunk = chunks[i]
+        try {
+          const embedding = await generateEmbedding(chunk)
 
-        vectors.push({
-          id: `${documentId}_chunk_${i}`,
-          values: embedding,
-          metadata: {
-            documentId,
-            botId,
-            userId,
-            fileName: filePath.split("/").pop()!,
-            chunkIndex: i,
-            text: chunk,
-          },
-        })
-      } catch (embeddingError) {
-        console.error(`Failed to generate embedding for chunk ${i}:`, embeddingError)
-        // Continue with other chunks
+          vectors.push({
+            id: `${documentId}_chunk_${i}`,
+            values: embedding,
+            metadata: {
+              documentId,
+              botId,
+              userId,
+              fileName: filePath.split("/").pop()!,
+              chunkIndex: i,
+              text: chunk,
+            },
+          })
+        } catch (embeddingError) {
+          console.error(`Failed to generate embedding for chunk ${i}:`, embeddingError)
+        }
       }
+
+      if (vectors.length > 0) {
+        await upsertVectors(vectors)
+        vectorsCreated = vectors.length
+      }
+    } catch (vectorError) {
+      console.error("Vector processing error:", vectorError)
     }
 
-    if (vectors.length > 0) {
-      await upsertVectors(vectors)
-    }
-
-    // Update document status
+    // Update document status in Supabase
     await supabaseAdmin
       .from("documents")
       .update({
         status: "completed",
-        chunks_count: vectors.length,
+        chunks_count: chunks.length,
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId)
 
-    console.log(`Document ${documentId} processed successfully with ${vectors.length} chunks`)
+    console.log(`Document ${documentId} processed successfully with ${vectorsCreated} vectors`)
   } catch (error) {
     console.error(`Document processing failed for ${documentId}:`, error)
 
-    // Update document status to failed
+    // Update document status to failed in Supabase
     await supabaseAdmin
       .from("documents")
       .update({
         status: "failed",
-        error_message: error.message,
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId)

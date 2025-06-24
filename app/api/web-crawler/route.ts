@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { generateText } from "ai"
 import { google } from "@ai-sdk/google"
 
-// Store crawl jobs in memory (in production, use a database)
+// Store crawl jobs in memory (in production, use Supabase)
 const crawlJobs = new Map()
 
 export async function POST(request: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     crawlJobs.set(jobId, job)
 
-    // Start crawling process (in background)
+    // Start crawling process using Gemini 2.0 Flash
     startCrawling(job)
 
     return NextResponse.json(job)
@@ -47,9 +47,9 @@ async function startCrawling(job: any) {
     job.progress = 10
     crawlJobs.set(job.id, job)
 
-    // Use Gemini to analyze the website and determine what to crawl
+    // Use Gemini 2.0 Flash to analyze the website and determine what to crawl
     const { text: crawlPlan } = await generateText({
-      model: google("gemini-1.5-flash"),
+      model: google("gemini-2.0-flash-exp"),
       prompt: `You are a web crawler AI. Analyze this website URL: ${job.url}
       
       Purpose: ${job.purpose}
@@ -73,9 +73,9 @@ async function startCrawling(job: any) {
     job.progress = 60
     crawlJobs.set(job.id, job)
 
-    // Use Gemini to extract and process content
+    // Use Gemini 2.0 Flash to extract and process content
     const { text: extractedContent } = await generateText({
-      model: google("gemini-1.5-flash"),
+      model: google("gemini-2.0-flash-exp"),
       prompt: `Based on the crawling plan: ${crawlPlan}
       
       Simulate extracting content from the website: ${job.url}
@@ -103,13 +103,7 @@ async function startCrawling(job: any) {
     job.progress = 100
     crawlJobs.set(job.id, job)
 
-    console.log(`Crawl job ${job.id} completed:`, {
-      url: job.url,
-      purpose: job.purpose,
-      pagesFound: job.pagesFound,
-      documentsExtracted: job.documentsExtracted,
-      contentLength: extractedContent.length,
-    })
+    console.log(`Crawl job ${job.id} completed using Gemini 2.0 Flash`)
   } catch (error) {
     console.error(`Crawl job ${job.id} failed:`, error)
     job.status = "failed"
