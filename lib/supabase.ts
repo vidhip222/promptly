@@ -1,33 +1,39 @@
+import { createBrowserClient, createServerClient } from "@supabase/ssr"
 import { createClient } from "@supabase/supabase-js"
 
-/* -------------------------------------------------------------------------- */
-/*                          Browser (public) client                           */
-/* -------------------------------------------------------------------------- */
-
-const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+/* ----------------------------- Public client (browser) ----------------------------- */
+const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 if (!publicUrl || !publicKey) {
-  throw new Error(
-    "Supabase env vars missing: please add NEXT_PUBLIC_SUPABASE_URL and " +
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY to your project settings.",
-  )
+  throw new Error("Missing Supabase public environment variables.")
 }
 
-export const supabase = createClient(publicUrl, publicKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-  },
-})
+let supabaseSingleton: ReturnType<typeof createClient> | null = null
 
-/* -------------------------------------------------------------------------- */
-/*                          Server-side (admin) client                         */
-/* -------------------------------------------------------------------------- */
+export function getSupabaseClient() {
+  if (!supabaseSingleton) {
+    supabaseSingleton = createClient(publicUrl, publicKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+      },
+    })
+    console.log("✅ Supabase client initialized (singleton)")
+  }
+  return supabaseSingleton
+}
 
+/* ---------------------------- Admin client (server) ---------------------------- */
 export const supabaseAdmin =
   typeof window === "undefined"
-    ? createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SERVICE_ROLE_KEY ?? "", {
-        auth: { autoRefreshToken: false, persistSession: false },
-      })
+    ? createClient(
+        process.env.SUPABASE_URL ?? "",
+        process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+        {
+          auth: { autoRefreshToken: false, persistSession: false },
+        }
+      )
     : null
+
+export const supabase = getSupabaseClient()
