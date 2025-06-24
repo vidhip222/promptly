@@ -94,6 +94,19 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Document metadata saved:", docData.id)
 
+    // Trigger bot retraining after document upload
+    try {
+      console.log("🔄 Triggering bot retraining...")
+      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/bots/${botId}/retrain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId: docData.id, action: "document_added" }),
+      })
+      console.log("✅ Bot retraining triggered")
+    } catch (retrainError) {
+      console.error("⚠️ Failed to trigger retraining:", retrainError)
+    }
+
     // Process document asynchronously
     console.log("🔄 Starting document processing...")
     processDocumentAsync(docData.id, filePath, file.type, botId, userId, buffer, file.name)

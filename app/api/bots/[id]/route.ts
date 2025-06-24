@@ -49,7 +49,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     // Get bot info first
     const { data: bot, error: getBotError } = await supabaseAdmin
       .from("bots")
-      .select("user_id")
+      .select("user_id, name")
       .eq("id", params.id)
       .single()
 
@@ -98,7 +98,19 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Failed to delete bot" }, { status: 500 })
     }
 
-    console.log(`✅ Bot ${params.id} deleted successfully`)
+    // Log deletion for audit trail
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "bot_deleted",
+      resource_type: "bot",
+      resource_id: params.id,
+      user_id: bot.user_id,
+      metadata: {
+        bot_name: bot.name,
+        deleted_at: new Date().toISOString(),
+      },
+    })
+
+    console.log(`✅ Bot ${params.id} deleted successfully with audit log`)
     return NextResponse.json({ success: true, message: "Bot deleted successfully" })
   } catch (error) {
     console.error("❌ Delete bot error:", error)

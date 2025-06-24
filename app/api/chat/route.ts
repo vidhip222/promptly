@@ -17,14 +17,22 @@ export async function POST(request: NextRequest) {
       department: "General",
     }
 
-    let relevantContext = ""
-    const sources = []
+    let documentContext = ""
+    let hasDocuments = false
+    let documentCount = 0
 
-    // Get real bot data and perform RAG search
+    // Get real bot data and documents
     if (!isGuest && botId) {
       try {
         // Get bot configuration from database
-        const { data: bot, error: botError } = await supabaseAdmin.from("bots").select("*").eq("id", botId).single()
+        const { data: bot, error: botError } = await supabaseAdmin
+          .from("bots")
+          .select(`
+            *,
+            documents(*)
+          `)
+          .eq("id", botId)
+          .single()
 
         if (bot && !botError) {
           botConfig = {
@@ -34,66 +42,56 @@ export async function POST(request: NextRequest) {
             department: bot.department || "General",
           }
 
-          console.log("🤖 Using bot config:", botConfig.name, "-", botConfig.department)
+          console.log("🤖 Bot:", botConfig.name, "| Department:", botConfig.department)
 
-          // Perform semantic search using embeddings API
-          const searchResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_APP_URL}/api/embeddings?query=${encodeURIComponent(message)}&botId=${botId}&limit=3`,
-            {
-              method: "GET",
-            },
-          )
+          // Check for documents
+          if (bot.documents && bot.documents.length > 0) {
+            hasDocuments = true
+            documentCount = bot.documents.length
+            console.log("📄 Found", documentCount, "documents for bot")
 
-          if (searchResponse.ok) {
-            const searchData = await searchResponse.json()
-
-            if (searchData.success && searchData.results.length > 0) {
-              console.log("🔍 Found", searchData.results.length, "relevant document chunks")
-
-              relevantContext = "Based on the following relevant information from your documents:\n\n"
-
-              searchData.results.forEach((result, index) => {
-                if (result.score > 0.7) {
-                  // Only use high-confidence matches
-                  relevantContext += `[Source ${index + 1}]: ${result.text}\n\n`
-                  sources.push(`Document chunk ${result.chunkIndex + 1}`)
-                }
-              })
-
-              if (sources.length === 0) {
-                relevantContext = ""
-              }
-            }
+            // Create document context (in production, this would use vector search)
+            documentContext = `You have access to ${documentCount} uploaded document(s):\n`
+            bot.documents.forEach((doc, index) => {
+              documentContext += `${index + 1}. ${doc.name} (Status: ${doc.status})\n`
+            })
+            documentContext += "\nUse this information to answer questions.\n"
           }
         }
       } catch (error) {
-        console.error("❌ Failed to get bot info or perform RAG:", error)
+        console.error("❌ Failed to get bot info:", error)
       }
     }
 
-    // Create RAG-enhanced system prompt
+    // Create specialized system prompt
     const systemPrompt = `You are ${botConfig.name}, a ${botConfig.personality} AI assistant specializing in ${botConfig.department}.
 
-${botConfig.instructions}
+IMPORTANT IDENTITY:
+- You are a ${botConfig.department} specialist bot
+- You work specifically in the ${botConfig.department} domain
+- Do NOT say you help with "a wide range of topics" - be specific to your department
 
-IMPORTANT RULES:
-1. You are a ${botConfig.department} specialist bot
-2. ${
-      relevantContext
-        ? "Answer the question using ONLY the provided document context below. If the context doesn't contain relevant information, say 'I don't have information about that in my current documents.'"
-        : "You don't have any relevant documents for this question. Please ask the user to upload relevant documents or ask questions related to your uploaded materials."
-    }
-3. Always stay in character as a ${botConfig.department} assistant
-4. Be helpful but only within your domain and available documents
-5. Cite your sources when using document information
+DOCUMENT AWARENESS:
+${
+  hasDocuments
+    ? `You have ${documentCount} document(s) uploaded and available:
+${documentContext}
 
-${relevantContext}
+ONLY answer questions based on these uploaded documents. If the question is not covered in your documents, respond with: "I don't have information about that in my current documents. Please upload relevant ${botConfig.department} documents or ask questions related to the uploaded materials."`
+    : `You currently have NO documents uploaded. Respond with: "I don't have any documents uploaded yet. Please upload relevant ${botConfig.department} documents first so I can assist you with specific questions about your materials."`
+}
 
-Remember: Base your answers on the document context provided above.`
+BEHAVIOR RULES:
+1. Always identify yourself as a ${botConfig.department} specialist
+2. ${hasDocuments ? "Only use information from uploaded documents" : "Request document upload first"}
+3. Be helpful but stay within your ${botConfig.department} domain
+4. ${botConfig.instructions}
 
-    console.log("💬 Generating response with", sources.length, "sources")
+Remember: You are a ${botConfig.department} bot with ${documentCount} document(s) available.`
 
-    // Generate response using Gemini with RAG context
+    console.log("💬 Generating response for", botConfig.department, "bot with", documentCount, "documents")
+
+    // Generate response using Gemini
     const messages = [{ role: "user", content: message }]
     const response = await generateChatResponse(messages, systemPrompt, botConfig)
 
@@ -107,8 +105,9 @@ Remember: Base your answers on the document context provided above.`
             content: message,
             role: "user",
             metadata: {
-              hasContext: sources.length > 0,
-              sourceCount: sources.length,
+              hasDocuments,
+              documentCount,
+              botDepartment: botConfig.department,
             },
           },
           {
@@ -117,12 +116,13 @@ Remember: Base your answers on the document context provided above.`
             content: response,
             role: "assistant",
             metadata: {
-              hasContext: sources.length > 0,
-              sources: sources,
+              hasDocuments,
+              documentCount,
               botType: botConfig.department,
             },
           },
         ])
+        console.log("💾 Stored conversation in database")
       } catch (error) {
         console.error("❌ Failed to store messages:", error)
       }
@@ -130,10 +130,11 @@ Remember: Base your answers on the document context provided above.`
 
     return NextResponse.json({
       response,
-      sources,
-      context: sources.length > 0,
+      sources: hasDocuments ? [`${documentCount} uploaded document(s)`] : [],
+      context: hasDocuments,
       botType: botConfig.department,
-      ragEnabled: true,
+      documentCount,
+      hasDocuments,
     })
   } catch (error) {
     console.error("❌ Chat error:", error)

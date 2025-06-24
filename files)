@@ -1,0 +1,110 @@
+/// NEW ⇒ app/api/documents/[id]/signed-url/route.ts
+// Generates a 60-minute signed URL for a stored document
+import { type NextRequest, NextResponse } from "next/server"
+import { supabaseAdmin } from "@/lib/supabase"
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const { id } = params
+    if (!id) {
+      return NextResponse.json({ error: "Missing document id" }, { status: 400 })
+    }
+
+    // 1. Look up the document record
+    const { data: doc, error } = await supabaseAdmin
+      .from("documents")
+      .select("storage_path") /* field that stores the object path */
+      .eq("id", id)
+      .single()
+
+    if (error || !doc?.storage_path) {
+      return NextResponse.json({ error: "Document not found" }, { status: 404 })
+    }
+
+    // 2. Create a signed URL (valid 60 min)
+    const { data, error: signErr } = await supabaseAdmin.storage
+      .from("documents")
+      .createSignedUrl(doc.storage_path, 60 * 60)
+
+    if (signErr || !data?.signedUrl) {
+      return NextResponse.json({ error: "Could not create signed URL" }, { status: 500 })
+    }
+
+    return NextResponse.json({ url: data.signedUrl })
+  } catch (err: any) {
+    console.error("Signed-URL error:", err)
+    return NextResponse.json({ error: "Unexpected server error" }, { status: 500 })
+  }
+}
+
+// NEW ⇒ components/document-viewer.tsx
+"use client"
+
+import { useEffect, useState } from "react"
+import { Loader2, FileX2 } from 'lucide-react'
+import { Card, CardContent } from "@/components/ui/card"
+
+interface DocumentViewerProps {
+  docId: string
+  className?: string
+}
+
+/**
+ * Shows any uploaded document (pdf, docx, txt, etc.) in an <iframe>.
+ * If the file does not exist, a friendly placeholder is rendered instead.
+ */
+export function DocumentViewer({ docId, className }: DocumentViewerProps) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    async function fetchUrl() {
+      try {
+        const res = await fetch(`/api/documents/${docId}/signed-url`)
+        if (!res.ok) throw new Error("Failed to retrieve signed url")
+        const { url } = (await res.json()) as { url: string }
+        setUrl(url)
+      } catch (err) {
+        console.error(err)
+        setError(true)
+      }
+    }
+    fetchUrl()
+  }, [docId])
+
+  if (error) {
+    return (
+      <Card className={className}>
+        <CardContent className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
+          <FileX2 className="h-8 w-8" />
+          <p>Document unavailable</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!url) {
+    return (
+      <Card className={className}>
+        <CardContent className="flex items-center justify-center p-6">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <iframe
+      src={url}
+      title="document"
+      className={`w-full h-full rounded-md border ${className ?? ""}`}
+    />
+  )
+}
+
+// EDIT ⇒ (wherever you were previously doing something like `<iframe src={blobUrl} />`)
+// Replace that element with:
+// <DocumentViewer docId={doc.id} className="h-[600px]" />

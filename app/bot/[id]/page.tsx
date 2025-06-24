@@ -80,8 +80,8 @@ export default function BotManagement({ params }: { params: { id: string } }) {
             const analyticsData = await analyticsResponse.json()
             analytics = {
               totalMessages: analyticsData.totalMessages || 0,
-              avgResponseTime: Math.round(analyticsData.avgResponseTime * 100) / 100 || 1.23,
-              satisfactionScore: Math.round(analyticsData.satisfactionScore * 10) / 10 || 4.5,
+              avgResponseTime: Math.round((analyticsData.avgResponseTime || 1.23) * 100) / 100,
+              satisfactionScore: Math.round((analyticsData.satisfactionScore || 4.5) * 100) / 100,
               topQuestions: analyticsData.topQuestions || [],
             }
           }
@@ -305,7 +305,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px:6 lg:px-8 py-8">
         <div className="mb-6">
           <h2 className="text-3xl font-bold text-gray-900">{botData.name}</h2>
           <p className="text-gray-600 mt-1">{botData.description}</p>
@@ -499,7 +499,9 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Avg Response Time</p>
-                      <p className="text-3xl font-bold text-gray-900">{botData.analytics.avgResponseTime}s</p>
+                      <p className="text-3xl font-bold text-gray-900">
+                        {botData.analytics.avgResponseTime.toFixed(2)}s
+                      </p>
                     </div>
                     <Bot className="w-8 h-8 text-green-600" />
                   </div>
@@ -511,7 +513,9 @@ export default function BotManagement({ params }: { params: { id: string } }) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Satisfaction</p>
-                      <p className="text-3xl font-bold text-gray-900">{botData.analytics.satisfactionScore}/5</p>
+                      <p className="text-3xl font-bold text-gray-900">
+                        {botData.analytics.satisfactionScore.toFixed(2)}/5
+                      </p>
                     </div>
                     <Settings className="w-8 h-8 text-purple-600" />
                   </div>
