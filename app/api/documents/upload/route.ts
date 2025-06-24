@@ -177,6 +177,7 @@ async function processDocumentAsync(
         status: "completed",
         content: text,
         chunks_count: chunks.length,
+        processed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId)
