@@ -49,7 +49,7 @@ export const STRIPE_PLANS = {
   pro: {
     name: "Pro",
     price: "$29",
-    priceId: process.env.STRIPE_PRO_PRICE_ID || "price_mock_pro", // Use mock ID if not set
+    priceId: "price_mock_pro", // Hardcoded mock ID
     features: ["10 bots", "100 documents", "10,000 messages/month", "Slack integration", "Priority support"],
     limits: {
       bots: 10,
@@ -60,7 +60,7 @@ export const STRIPE_PLANS = {
   enterprise: {
     name: "Enterprise",
     price: "$99",
-    priceId: process.env.STRIPE_ENTERPRISE_PRICE_ID || "price_mock_enterprise", // Use mock ID if not set
+    priceId: "price_mock_enterprise", // Hardcoded mock ID
     features: [
       "Unlimited bots",
       "Unlimited documents",

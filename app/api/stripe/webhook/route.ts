@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { stripe } from "@/lib/stripe"
+import { stripe, STRIPE_PLANS } from "@/lib/stripe" // Import STRIPE_PLANS
 import { supabaseAdmin } from "@/lib/supabase"
 import { headers } from "next/headers"
 
@@ -12,7 +12,8 @@ export async function POST(request: NextRequest) {
     let event: any
 
     try {
-      event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!)
+      // Use a dummy webhook secret for mock environment
+      event = stripe.webhooks.constructEvent(body, signature, "whsec_mock_secret")
     } catch (err) {
       console.error("Webhook signature verification failed:", err)
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
@@ -53,11 +54,11 @@ async function handleSubscriptionChange(subscription: any) {
   const status = subscription.status
   const priceId = subscription.items.data[0].price.id
 
-  // Map price ID to plan
+  // Map price ID to plan using STRIPE_PLANS
   let planId = "free"
-  if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
+  if (priceId === STRIPE_PLANS.pro.priceId) {
     planId = "pro"
-  } else if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) {
+  } else if (priceId === STRIPE_PLANS.enterprise.priceId) {
     planId = "enterprise"
   }
 
