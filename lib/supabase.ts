@@ -20,57 +20,40 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 // Use process.env directly as Vercel injects these at runtime/build time
 const PUBLIC_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const PUBLIC_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY // Server-only key
 
-const SERVICE_KEY =
-  typeof window === "undefined"
-    ? process.env.SUPABASE_SERVICE_ROLE_KEY // server-only
-    : undefined
-
-function invariant(name: string, value: unknown) {
-  if (!value) {
-    console.warn(`[supabase] Missing environment variable ${name}`)
-  }
-}
-
-// Validate required public vars (we warn, no hard crash so UI previews keep working)
-invariant("NEXT_PUBLIC_SUPABASE_URL", PUBLIC_URL)
-invariant("NEXT_PUBLIC_SUPABASE_ANON_KEY", PUBLIC_ANON)
-if (typeof window === "undefined") {
-  // Only warn for service key on server
-  invariant("SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY)
-}
+// Ensure public variables are always defined for the client
+const supabaseUrl = PUBLIC_URL ?? "https://placeholder.supabase.co"
+const supabaseAnonKey = PUBLIC_ANON ?? "public-anon-key"
 
 // ---------------------------------------------------------------------------
-// Singleton creators
+// Supabase Client Instances
 // ---------------------------------------------------------------------------
-const globalAny = globalThis as unknown as {
-  __supabase?: SupabaseClient
-  __supabaseAdmin?: SupabaseClient
-}
-
-function createAnonClient(): SupabaseClient {
-  // Even if the envs are undefined we still create a dummy client so imports never break.
-  return createClient(PUBLIC_URL ?? "https://placeholder.supabase.co", PUBLIC_ANON ?? "public-anon-key")
-}
-
-function createServiceRoleClient(): SupabaseClient {
-  // If the secure key is missing we gracefully fall back to anon.
-  if (!SERVICE_KEY) {
-    console.warn("[supabase] SUPABASE_SERVICE_ROLE_KEY not set – falling back to anon client")
-    return supabase // Fallback to the anon client
-  }
-  // Ensure PUBLIC_URL is defined for the service role client
-  if (!PUBLIC_URL) {
-    console.error(
-      "[supabase] PUBLIC_URL is missing for service role client. This should not happen if NEXT_PUBLIC_SUPABASE_URL is set.",
-    )
-    return supabase // Fallback if URL is unexpectedly missing
-  }
-  return createClient(PUBLIC_URL, SERVICE_KEY)
-}
 
 // Public (browser + server) client
-export const supabase = globalAny.__supabase ?? (globalAny.__supabase = createAnonClient())
+// This client uses the public anon key and is safe for client-side use.
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
 
-// Service-role (server) client
-export const supabaseAdmin = globalAny.__supabaseAdmin ?? (globalAny.__supabaseAdmin = createServiceRoleClient())
+// Service-role (server-only) client
+// This client uses the service role key for elevated privileges.
+// If the service key is not available (e.g., in client-side code or preview without the key),
+// it falls back to the anonymous client to prevent crashes, but with limited permissions.
+export const supabaseAdmin: SupabaseClient = (() => {
+  // In a browser environment, or if the service key is missing,
+  // fall back to the public client.
+  if (typeof window !== "undefined" || !SERVICE_KEY) {
+    if (typeof window === "undefined" && !SERVICE_KEY) {
+      console.warn(
+        "[supabase] SUPABASE_SERVICE_ROLE_KEY not set. Falling back to anon client for server-side admin operations.",
+      )
+    } else if (typeof window !== "undefined") {
+      console.warn(
+        "[supabase] supabaseAdmin should ideally not be used on the client side. Falling back to anon client.",
+      )
+    }
+    return supabase // Fallback to the anon client
+  }
+
+  // If SERVICE_KEY is present and we are on the server, create the service role client.
+  return createClient(supabaseUrl, SERVICE_KEY)
+})()
