@@ -102,7 +102,34 @@ export default function Billing() {
   })
 
   const handleUpgrade = async (planId: string) => {
-    alert(`Upgrade to ${planId} plan - Contact support for billing setup`)
+    console.log(`Attempting to upgrade to ${planId} plan (mocked)`)
+    // In a real application, you would get the actual userId from your authentication context
+    const mockUserId = "user_mock_123" // Placeholder for demonstration
+
+    try {
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ planId, userId: mockUserId }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        console.log("Mocked checkout session created:", data)
+        // In a real scenario, you would redirect to data.url
+        alert(`Mocked upgrade to ${planId} initiated! Check console for details. Redirect URL: ${data.url}`)
+        // window.location.href = data.url; // Uncomment for real redirect
+      } else {
+        console.error("Mocked checkout session failed:", data.error)
+        alert(`Mocked upgrade failed: ${data.error}`)
+      }
+    } catch (error) {
+      console.error("Error during mocked upgrade fetch:", error)
+      alert("An error occurred during mocked upgrade.")
+    }
   }
 
   return (
@@ -232,7 +259,7 @@ export default function Billing() {
                     disabled={plan.id === subscription?.planId}
                     onClick={() => handleUpgrade(plan.id)}
                   >
-                    {plan.id === subscription?.planId ? "Current Plan" : "Contact Sales"}
+                    {plan.id === subscription?.planId ? "Current Plan" : "Upgrade"}
                   </Button>
                 </CardContent>
               </Card>

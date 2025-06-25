@@ -73,23 +73,16 @@ export async function POST(request: NextRequest) {
       // User doesn't exist, create them
       console.log("Creating user profile for:", userId)
 
-      // Get user info from auth
-      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId)
-
-      if (authError) {
-        console.error("Failed to get auth user:", authError)
-        return NextResponse.json({ error: "User authentication failed" }, { status: 401 })
-      }
-
+      // ——— Create a minimal profile if it doesn't exist ———
       const { error: createUserError } = await supabaseAdmin.from("users").insert({
         id: userId,
-        email: authUser.user.email || "unknown@example.com",
-        name: authUser.user.user_metadata?.name || authUser.user.email?.split("@")[0] || "User",
+        email: body.email || "unknown@example.com",
+        name: body.name || body.email?.split("@")[0] || "User",
         subscription_plan: "free",
       })
 
       if (createUserError) {
-        console.error("Failed to create user profile:", createUserError)
+        console.error("Failed to create user profile without admin privileges:", createUserError)
         return NextResponse.json({ error: "Failed to create user profile" }, { status: 500 })
       }
     }

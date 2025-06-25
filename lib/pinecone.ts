@@ -1,59 +1,26 @@
-import { Pinecone } from "@pinecone-database/pinecone"
+/**
+ * Stubbed Pinecone helper.
+ *
+ * The real Pinecone integration was removed from the project.  This file
+ * merely satisfies legacy imports so the project can build and deploy.
+ * All functions return empty results or no-ops.
+ */
 
-// Initialize Pinecone
-const pinecone = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY!,
-})
-export { pinecone }
-
-export const pineconeIndex = pinecone.index("promptly-embeddings")
-
-export interface VectorMetadata {
-  documentId: string
-  botId: string
-  userId: string
-  fileName: string
-  chunkIndex: number
-  text: string
+export interface QueryMatch {
+  id: string
+  score: number
+  metadata?: Record<string, unknown>
 }
 
-export async function upsertVectors(
-  vectors: Array<{
-    id: string
-    values: number[]
-    metadata: VectorMetadata
-  }>,
-) {
-  try {
-    await pineconeIndex.upsert(vectors)
-    return { success: true }
-  } catch (error) {
-    console.error("Pinecone upsert error:", error)
-    throw error
-  }
+/**
+ * Dummy vector search – always returns an empty array.
+ * @param _embedding vector you would search for
+ * @param _topK      how many nearest neighbours to return (ignored)
+ */
+export async function queryVectors(_embedding: number[], _topK = 5): Promise<QueryMatch[]> {
+  return []
 }
 
-export async function queryVectors(vector: number[], filter: Record<string, any>, topK = 5) {
-  try {
-    const queryResponse = await pineconeIndex.query({
-      vector,
-      filter,
-      topK,
-      includeMetadata: true,
-    })
-    return queryResponse.matches || []
-  } catch (error) {
-    console.error("Pinecone query error:", error)
-    throw error
-  }
-}
-
-export async function deleteVectors(filter: Record<string, any>) {
-  try {
-    await pineconeIndex.deleteMany(filter)
-    return { success: true }
-  } catch (error) {
-    console.error("Pinecone delete error:", error)
-    throw error
-  }
-}
+/* ------------------------------------------------------------------ */
+/*  Add any other previously-imported stubs here so the build succeeds */
+/* ------------------------------------------------------------------ */

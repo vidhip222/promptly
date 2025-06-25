@@ -1,6 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import { GoogleGenerativeAI, type Part } from "@google/generative-ai"
 
 const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
+
+// Log the detected API Key (or lack thereof) for debugging in preview
+console.log(`[Gemini] Detected API Key (first 5 chars): ${apiKey ? apiKey.substring(0, 5) + "..." : "None"}`)
 
 if (!apiKey) {
   throw new Error(
@@ -10,44 +13,25 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey)
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  try {
-    const model = genAI.getGenerativeModel({ model: "text-embedding-004" })
-    const result = await model.embedContent(text)
-    return result.embedding.values
-  } catch (error) {
-    console.error("Embedding generation error:", error)
-    throw new Error("Failed to generate embedding")
-  }
-}
-
 export async function generateChatResponse(
-  messages: Array<{ role: string; content: string }>,
-  context?: string,
+  userMessage: string,
+  systemPrompt: string,
+  // documentParts can now contain a mix of text and inlineData parts
+  documentParts: Part[],
   botConfig?: any,
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" })
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
 
-    let systemPrompt = "You are a helpful AI assistant."
+    const contents: Part[] = [
+      { text: systemPrompt }, // System prompt as the first part
+      { text: userMessage }, // User's message
+      ...documentParts, // Spread the prepared document parts here
+    ]
 
-    if (botConfig) {
-      systemPrompt = `You are ${botConfig.name}, a ${botConfig.personality} assistant. ${botConfig.instructions}`
-    }
-
-    let prompt = systemPrompt + "\n\n"
-
-    if (context) {
-      prompt += `Context from documents:\n${context}\n\n`
-    }
-
-    prompt += "Conversation:\n"
-    messages.forEach((msg) => {
-      prompt += `${msg.role}: ${msg.content}\n`
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: contents }],
     })
-    prompt += "assistant:"
-
-    const result = await model.generateContent(prompt)
     const response = await result.response
     return response.text()
   } catch (error) {
@@ -57,16 +41,17 @@ export async function generateChatResponse(
 }
 
 export async function generateChatResponseSync(
-  messages: Array<{ role: string; content: string }>,
-  context?: string,
+  userMessage: string,
+  systemPrompt: string,
+  documentParts: Part[],
   botConfig?: any,
 ): Promise<string> {
-  return generateChatResponse(messages, context, botConfig)
+  return generateChatResponse(userMessage, systemPrompt, documentParts, botConfig)
 }
 
 export async function extractTextFromUrl(url: string, purpose: string): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" })
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }) // Use multimodal model for URL content
 
     const prompt = `Extract and summarize the main content from this URL for the purpose of: ${purpose}
     
@@ -85,7 +70,7 @@ export async function extractTextFromUrl(url: string, purpose: string): Promise<
 
 export async function generateBotConfiguration(template: any): Promise<any> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" })
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
 
     const prompt = `Create a comprehensive bot configuration for a ${template.name} in the ${template.department} department.
 
@@ -139,4 +124,15 @@ Return as JSON with keys: enhancedPersonality, detailedInstructions, exampleQues
       guidelines: "Always be respectful and provide accurate information",
     }
   }
+}
+
+/**
+ * Stub kept for backward-compatibility with older imports.
+ * It returns a zero-filled 1536-dimensional vector (same length as OpenAI Ada v2)
+ * so that anything expecting an embedding array will still receive the right type.
+ * Remove once the rest of the codebase no longer imports `generateEmbedding`.
+ */
+export async function generateEmbedding(_text: string): Promise<number[]> {
+  // Returning zeros keeps cosine-similarity math safe (zero similarity).
+  return new Array(1536).fill(0)
 }

@@ -40,10 +40,10 @@ export async function POST(request: NextRequest) {
         console.log(`Unhandled event type: ${event.type}`)
     }
 
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ received: true, message: "MOCK: Webhook received, no action taken." })
   } catch (error) {
-    console.error("Webhook error:", error)
-    return NextResponse.json({ error: "Webhook failed" }, { status: 500 })
+    console.error("Webhook error (mocked):", error)
+    return NextResponse.json({ error: "Webhook failed (mocked)" }, { status: 500 })
   }
 }
 

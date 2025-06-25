@@ -17,23 +17,97 @@ interface Message {
   sources?: string[]
 }
 
+interface BotConfig {
+  id: string
+  name: string
+  description: string
+  department: string
+  personality: string
+  instructions: string
+  status: string
+  user_id: string
+  created_at: string
+  updated_at: string
+}
+
 export default function ChatInterface({ params }: { params: { id: string } }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [botName, setBotName] = useState("AI Assistant")
+  const [botConfig, setBotConfig] = useState<BotConfig | null>(null)
+  const [isBotConfigLoading, setIsBotConfigLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Add welcome message
-    const welcomeMessage: Message = {
-      id: "welcome",
-      content: `Hello! I'm ${botName}. How can I help you today?`,
-      role: "assistant",
-      timestamp: new Date(),
+    const fetchBotConfig = async () => {
+      try {
+        const response = await fetch(`/api/bots/${params.id}`)
+        if (response.ok) {
+          const data = await response.json()
+          const fetchedBotConfig: BotConfig = data.bot
+          setBotConfig(fetchedBotConfig)
+
+          const welcomeMessage: Message = {
+            id: "welcome",
+            content: `Hello! I'm ${fetchedBotConfig.name}. I'm a ${fetchedBotConfig.department} specialist. How can I help you today?`,
+            role: "assistant",
+            timestamp: new Date(),
+          }
+          setMessages([welcomeMessage])
+        } else {
+          console.error("Failed to fetch bot config:", response.statusText)
+          // Fallback for UI if bot config fails to load
+          setBotConfig({
+            id: params.id,
+            name: "AI Assistant",
+            description: "",
+            department: "general",
+            personality: "",
+            instructions: "",
+            status: "active",
+            user_id: "",
+            created_at: "",
+            updated_at: "",
+          })
+          setMessages([
+            {
+              id: "welcome",
+              content: "Hello! I'm an AI Assistant. How can I help you today?",
+              role: "assistant",
+              timestamp: new Date(),
+            },
+          ])
+        }
+      } catch (error) {
+        console.error("Error fetching bot config:", error)
+        // Fallback for UI if bot config fails to load
+        setBotConfig({
+          id: params.id,
+          name: "AI Assistant",
+          description: "",
+          department: "general",
+          personality: "",
+          instructions: "",
+          status: "active",
+          user_id: "",
+          created_at: "",
+          updated_at: "",
+        })
+        setMessages([
+          {
+            id: "welcome",
+            content: "Hello! I'm an AI Assistant. How can I help you today?",
+            role: "assistant",
+            timestamp: new Date(),
+          },
+        ])
+      } finally {
+        setIsBotConfigLoading(false)
+      }
     }
-    setMessages([welcomeMessage])
-  }, [botName])
+
+    fetchBotConfig()
+  }, [params.id])
 
   useEffect(() => {
     scrollToBottom()
@@ -45,7 +119,7 @@ export default function ChatInterface({ params }: { params: { id: string } }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isLoading) return
+    if (!input.trim() || isLoading || !botConfig) return // Ensure botConfig is loaded
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -69,6 +143,7 @@ export default function ChatInterface({ params }: { params: { id: string } }) {
           botId: params.id,
           userId: "guest", // For now, using guest mode
           isGuest: true,
+          botConfig: botConfig, // Pass the fetched botConfig to the API
         }),
       })
 
@@ -101,7 +176,7 @@ export default function ChatInterface({ params }: { params: { id: string } }) {
 
   const exportChat = () => {
     const chatData = {
-      botName,
+      botName: botConfig?.name || "AI Assistant",
       exportDate: new Date().toISOString(),
       messages: messages.map((msg) => ({
         role: msg.role,
@@ -122,6 +197,14 @@ export default function ChatInterface({ params }: { params: { id: string } }) {
     URL.revokeObjectURL(url)
   }
 
+  if (isBotConfigLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <p>Loading bot configuration...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
@@ -133,7 +216,7 @@ export default function ChatInterface({ params }: { params: { id: string } }) {
               <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
                 <Zap className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-xl font-bold text-gray-900">{botName}</h1>
+              <h1 className="text-xl font-bold text-gray-900">{botConfig?.name || "AI Assistant"}</h1>
             </Link>
             <div className="flex items-center space-x-2">
               <Button variant="outline" size="sm" onClick={exportChat}>
@@ -156,7 +239,7 @@ export default function ChatInterface({ params }: { params: { id: string } }) {
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center space-x-2">
               <MessageSquare className="w-5 h-5" />
-              <span>Chat with {botName}</span>
+              <span>Chat with {botConfig?.name || "AI Assistant"}</span>
             </CardTitle>
           </CardHeader>
 
@@ -227,10 +310,10 @@ export default function ChatInterface({ params }: { params: { id: string } }) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Type your message..."
-                disabled={isLoading}
+                disabled={isLoading || isBotConfigLoading}
                 className="flex-1"
               />
-              <Button type="submit" disabled={isLoading || !input.trim()}>
+              <Button type="submit" disabled={isLoading || !input.trim() || isBotConfigLoading}>
                 <Send className="w-4 h-4" />
               </Button>
             </form>

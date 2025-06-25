@@ -10,7 +10,19 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Bot, FileText, Settings, BarChart3, Share, Zap, Trash2, Upload, AlertCircle } from "lucide-react"
+import {
+  ArrowLeft,
+  Bot,
+  FileText,
+  Settings,
+  BarChart3,
+  Share,
+  Zap,
+  Trash2,
+  Upload,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react" // Added RefreshCw icon
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -45,6 +57,7 @@ export default function BotManagement({ params }: { params: { id: string } }) {
   const [user, setUser] = useState<any>(null)
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [retraining, setRetraining] = useState(false) // New state for retraining
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -152,6 +165,30 @@ export default function BotManagement({ params }: { params: { id: string } }) {
     } catch (error) {
       console.error("Failed to save bot:", error)
       alert("Failed to save settings")
+    }
+  }
+
+  const handleRetrainBot = async () => {
+    if (!botData) return
+
+    setRetraining(true)
+    try {
+      const response = await fetch(`/api/bots/${params.id}/retrain`, {
+        method: "POST",
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        alert(result.message || "Bot retraining initiated!")
+      } else {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to initiate retraining")
+      }
+    } catch (error) {
+      console.error("Failed to retrain bot:", error)
+      alert(`Failed to retrain bot: ${error.message}`)
+    } finally {
+      setRetraining(false)
     }
   }
 
@@ -296,6 +333,11 @@ export default function BotManagement({ params }: { params: { id: string } }) {
               <Button size="sm" onClick={handleSave}>
                 Save Changes
               </Button>
+              {/* New Retrain Button */}
+              <Button size="sm" onClick={handleRetrainBot} disabled={retraining}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                {retraining ? "Retraining..." : "Retrain Bot"}
+              </Button>
               <Button variant="destructive" size="sm" onClick={handleDeleteBot} disabled={deleting}>
                 <Trash2 className="w-4 h-4 mr-2" />
                 {deleting ? "Deleting..." : "Delete Bot"}
@@ -356,11 +398,13 @@ export default function BotManagement({ params }: { params: { id: string } }) {
 
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                   <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-3">Upload documents (PDF, DOCX, TXT, CSV) - Max 10MB each</p>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Upload documents (PDF, DOCX, TXT, CSV, JPG, PNG) - Max 10MB each
+                  </p>
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.docx,.txt,.csv"
+                    accept=".pdf,.docx,.txt,.csv,.jpg,.jpeg,.png" // Updated accepted file types
                     onChange={handleFileUpload}
                     className="hidden"
                     id="document-upload"

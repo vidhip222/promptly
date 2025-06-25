@@ -35,6 +35,6 @@ Promptly is a no-code platform for building **custom AI chatbots** for specific 
 
 ### 1. Clone the Repo
 
-```bash
+\`\`\`bash
 git clone https://github.com/yourusername/promptly.git
 cd promptly

@@ -1,14 +1,17 @@
 import Stripe from "stripe"
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+// Mock Stripe instance - real API calls will not be made
+export const stripe = new Stripe("sk_test_mock_key", {
   apiVersion: "2023-10-16",
 })
 
 export async function createCustomer(email: string, name: string) {
-  return await stripe.customers.create({
+  console.log(`MOCK: Creating Stripe customer for ${email}`)
+  return {
+    id: `cus_mock_${Math.random().toString(36).substring(7)}`,
     email,
     name,
-  })
+  } as Stripe.Customer
 }
 
 export async function createCheckoutSession(
@@ -17,26 +20,19 @@ export async function createCheckoutSession(
   successUrl: string,
   cancelUrl: string,
 ) {
-  return await stripe.checkout.sessions.create({
-    customer: customerId,
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ],
-    mode: "subscription",
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-  })
+  console.log(`MOCK: Creating Stripe checkout session for customer ${customerId} with price ${priceId}`)
+  return {
+    id: `cs_mock_${Math.random().toString(36).substring(7)}`,
+    url: `${successUrl}?mock_session_id=true`, // Return a dummy URL
+  } as Stripe.Checkout.Session
 }
 
 export async function createBillingPortalSession(customerId: string, returnUrl: string) {
-  return await stripe.billingPortal.sessions.create({
-    customer: customerId,
-    return_url: returnUrl,
-  })
+  console.log(`MOCK: Creating Stripe billing portal session for customer ${customerId}`)
+  return {
+    id: `bps_mock_${Math.random().toString(36).substring(7)}`,
+    url: `${returnUrl}?mock_portal_id=true`, // Return a dummy URL
+  } as Stripe.BillingPortal.Session
 }
 
 export const STRIPE_PLANS = {
@@ -53,7 +49,7 @@ export const STRIPE_PLANS = {
   pro: {
     name: "Pro",
     price: "$29",
-    priceId: process.env.STRIPE_PRO_PRICE_ID!,
+    priceId: process.env.STRIPE_PRO_PRICE_ID || "price_mock_pro", // Use mock ID if not set
     features: ["10 bots", "100 documents", "10,000 messages/month", "Slack integration", "Priority support"],
     limits: {
       bots: 10,
@@ -64,7 +60,7 @@ export const STRIPE_PLANS = {
   enterprise: {
     name: "Enterprise",
     price: "$99",
-    priceId: process.env.STRIPE_ENTERPRISE_PRICE_ID!,
+    priceId: process.env.STRIPE_ENTERPRISE_PRICE_ID || "price_mock_enterprise", // Use mock ID if not set
     features: [
       "Unlimited bots",
       "Unlimited documents",
