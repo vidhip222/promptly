@@ -144,6 +144,22 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("Bot created successfully:", bot.id)
+    await supabaseAdmin.from("audit_logs").insert({
+      action: "bot_created",
+      resource_type: "bot",
+      resource_id: bot.id,
+      bot_id: bot.id,
+      user_id: userId,
+      metadata: JSON.stringify({
+        name,
+        description,
+        department: department || "General",
+        personality: enhancedConfig.personality,
+        instructions: enhancedConfig.instructions,
+        status: status || "active",
+      }),
+    })
+
     return NextResponse.json({ bot })
   } catch (error) {
     console.error("Create bot error:", error)
