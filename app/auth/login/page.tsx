@@ -206,6 +206,20 @@ export default function LoginPage() {
           </div>
         </CardContent>
       </Card>
+      <div className="fixed bottom-4 right-4 z-50">
+        <a
+          href="https://bolt.new"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center"
+        >
+          <img
+            src="/bolt-logo.png"
+            alt="Bolt Logo"
+            className="h-12 w-auto"
+          />
+        </a>
+      </div>
     </div>
   )
 }

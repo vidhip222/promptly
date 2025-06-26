@@ -1,130 +1,121 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
 
+export const dynamic = "force-dynamic" // disable filesystem cache for this handler
+
 export async function POST(request: NextRequest) {
   try {
-    const { url, purpose } = await request.json()
+    let { url, purpose } = await request.json<{
+      url: string
+      purpose: string
+    }>()
 
     if (!url || !purpose) {
       return NextResponse.json({ error: "URL and purpose are required" }, { status: 400 })
     }
 
-    console.log("🕷️ Starting web crawl for:", url)
-
-    // Create crawl job
-    const jobId = Math.random().toString(36).substr(2, 9)
-    const crawlJob = {
-      id: jobId,
-      url,
-      purpose,
-      status: "pending" as const,
-      progress: 0,
-      pagesFound: 0,
-      documentsExtracted: 0,
-      extractedContent: "",
-      createdAt: new Date().toISOString(),
+    // Ensure URL is absolute & uses https by default
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`
     }
 
-    // Store job in database
-    await supabaseAdmin.from("crawl_jobs").insert({
+    console.log("🕷️ Starting web crawl for:", url)
+
+    // Create crawl job record
+    const jobId = Math.random().toString(36).slice(2, 11)
+    const now = new Date().toISOString()
+
+    const initialJob = {
       id: jobId,
       url,
       purpose,
-      status: "pending",
-      progress: 0,
+      status: "crawling" as const,
+      progress: 5,
       pages_found: 0,
       documents_extracted: 0,
       extracted_content: "",
-    })
+      created_at: now,
+    }
 
-    // Start crawling process
-    setTimeout(async () => {
-      try {
-        console.log("🔍 Crawling website:", url)
+    await supabaseAdmin.from("crawl_jobs").insert(initialJob)
 
-        // Update status to crawling
-        await supabaseAdmin.from("crawl_jobs").update({ status: "crawling", progress: 10 }).eq("id", jobId)
+    // Step 1 — Fetch page
+    let html: string
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": "Promptly Web Crawler 1.1" },
+        redirect: "follow",
+        cache: "no-store",
+      })
 
-        // Simulate crawling with actual fetch
-        const response = await fetch(url, {
-          headers: {
-            "User-Agent": "Promptly Web Crawler 1.0",
-          },
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch ${url}: ${response.status}`)
-        }
-
-        const html = await response.text()
-        console.log("📄 Fetched HTML content, length:", html.length)
-
-        // Update progress
-        await supabaseAdmin
-          .from("crawl_jobs")
-          .update({ status: "processing", progress: 50, pages_found: 1 })
-          .eq("id", jobId)
-
-        // Extract text content from HTML
-        const textContent = extractTextFromHTML(html, purpose)
-        console.log("📝 Extracted text content, length:", textContent.length)
-
-        // Update progress
-        await supabaseAdmin.from("crawl_jobs").update({ progress: 80, documents_extracted: 1 }).eq("id", jobId)
-
-        // Final update with completed status
-        await supabaseAdmin
-          .from("crawl_jobs")
-          .update({
-            status: "completed",
-            progress: 100,
-            extracted_content: textContent,
-          })
-          .eq("id", jobId)
-
-        console.log("✅ Web crawl completed successfully for:", url)
-      } catch (error) {
-        console.error("❌ Crawl failed:", error)
-        await supabaseAdmin
-          .from("crawl_jobs")
-          .update({
-            status: "failed",
-            error: error.message,
-          })
-          .eq("id", jobId)
+      if (!res.ok) {
+        throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`)
       }
-    }, 1000)
+      html = await res.text()
+      await supabaseAdmin.from("crawl_jobs").update({ progress: 30, pages_found: 1 }).eq("id", jobId)
+    } catch (err) {
+      console.error("❌ Fetch error:", err)
+      await markFailed(jobId, String(err))
+      return NextResponse.json({ error: "Failed to fetch URL" }, { status: 502 })
+    }
 
-    return NextResponse.json(crawlJob)
+    // Step 2 — Extract text
+    try {
+      const textContent = extractTextFromHTML(html, purpose)
+      await supabaseAdmin
+        .from("crawl_jobs")
+        .update({
+          progress: 100,
+          documents_extracted: 1,
+          status: "completed",
+          extracted_content: textContent,
+        })
+        .eq("id", jobId)
+
+      console.log("✅ Crawl completed for:", url)
+
+      return NextResponse.json({
+        ...initialJob,
+        status: "completed",
+        progress: 100,
+        documents_extracted: 1,
+      })
+    } catch (err) {
+      console.error("❌ Extraction error:", err)
+      await markFailed(jobId, String(err))
+      return NextResponse.json({ error: "Failed to extract content" }, { status: 500 })
+    }
   } catch (error) {
-    console.error("Web crawler error:", error)
-    return NextResponse.json({ error: "Failed to start crawling" }, { status: 500 })
+    console.error("Web crawler route error:", error)
+    return NextResponse.json({ error: "Unexpected server error" }, { status: 500 })
   }
 }
 
+async function markFailed(jobId: string, message: string) {
+  await supabaseAdmin.from("crawl_jobs").update({ status: "failed", error: message, progress: 100 }).eq("id", jobId)
+}
+
 function extractTextFromHTML(html: string, purpose: string): string {
-  // Remove script and style elements
+  // Remove script & style tags
   let text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
   text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
 
-  // Remove HTML tags
+  // Strip all HTML
   text = text.replace(/<[^>]*>/g, " ")
 
-  // Clean up whitespace
+  // Collapse whitespace
   text = text.replace(/\s+/g, " ").trim()
 
-  // Extract relevant sections based on purpose
-  const lines = text.split(/[.!?]+/).filter((line) => line.trim().length > 20)
-
-  // Filter content based on purpose keywords
+  // Simple relevance filter
   const purposeKeywords = purpose.toLowerCase().split(/\s+/)
-  const relevantLines = lines.filter((line) => {
-    const lineLower = line.toLowerCase()
-    return purposeKeywords.some((keyword) => lineLower.includes(keyword))
-  })
+  const sentences = text
+    .split(/[.!?]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 20)
 
-  // If no relevant content found, return first part of general content
-  const finalContent = relevantLines.length > 0 ? relevantLines.join(". ") : lines.slice(0, 10).join(". ")
+  const relevant = sentences.filter((s) => purposeKeywords.some((k) => s.toLowerCase().includes(k)))
 
-  return finalContent.substring(0, 5000) // Limit to 5000 characters
+  const content = relevant.length > 0 ? relevant.join(". ") : sentences.slice(0, 10).join(". ")
+
+  return content.slice(0, 5000) // 5 kB cap
 }
