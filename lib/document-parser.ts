@@ -38,22 +38,9 @@ export async function parseDocument(filePath: string, fileType: string, fileBuff
           const { default: mammoth } = await import("mammoth")
           mammothExtract = mammoth.extractRawText as typeof mammothExtract
         }
-
-        // Some Mammoth builds expect `buffer`, others want `arrayBuffer`.
-        // We’ll supply both to be safe.
-        const arrayBuffer = fileBuffer.buffer.slice(
-          fileBuffer.byteOffset,
-          fileBuffer.byteOffset + fileBuffer.byteLength,
-        )
-
-        const result =
-          // 1️⃣ Try the documented `buffer` option first …
-          (await mammothExtract({ buffer: fileBuffer }).catch(() => null)) ||
-          // 2️⃣ … and if it fails, fall back to `arrayBuffer`.
-          (await mammothExtract({ arrayBuffer }))
-
+        const result = await mammothExtract({ buffer: fileBuffer })
         console.log(`[Document Parser] Successfully parsed DOCX: ${path.basename(filePath)}`)
-        return result.value ?? result.text ?? ""
+        return result.value
       } catch (error) {
         console.error(`[Document Parser] Error parsing DOCX ${path.basename(filePath)}:`, error)
         return `[Error parsing DOCX: ${path.basename(

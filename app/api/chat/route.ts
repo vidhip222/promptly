@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         // Get completed documents and their file paths AND content
         const { data: documents, error: docsError } = await supabaseAdmin
           .from("documents")
-          .select("id, name, file_path, file_type") // no content column
+          .select("id, name, file_path, file_type, content") // NOW SELECTING 'content'
           .eq("bot_id", botId)
           .eq("status", "completed") // Only use completed documents (uploaded to storage)
 
@@ -102,11 +102,14 @@ export async function POST(request: NextRequest) {
               } catch (fetchError: any) {
                 console.error(`❌ Failed to fetch or encode image ${doc.name}:`, fetchError.message)
               }
+            } else if (doc.content) {
+              // For text-based documents (PDF, DOCX, TXT, CSV), use the pre-extracted content
+              documentParts.push({
+                text: `--- Document: ${doc.name} ---\n${doc.content}\n--- End of Document: ${doc.name} ---`,
+              })
+              console.log(`  ✅ Added extracted text content for document: ${doc.name}. Length: ${doc.content.length}`)
             } else {
-              // No inlineData (image) and no pre-extracted text to work with
-              console.warn(
-                `⚠️ Document ${doc.name} (${doc.file_type}) has no text content stored in the database – skipping.`,
-              )
+              console.warn(`⚠️ Document ${doc.name} (${doc.file_type}) has no content and is not an image. Skipping.`)
             }
           }
           // Set hasDocuments to true ONLY if at least one document part was successfully prepared for Gemini
