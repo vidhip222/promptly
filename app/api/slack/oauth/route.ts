@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID!
 const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET!

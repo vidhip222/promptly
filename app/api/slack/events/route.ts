@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 import { generateEmbedding, generateChatResponseSync } from "@/lib/gemini"
 import { queryVectors } from "@/lib/pinecone"
 

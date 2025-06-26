@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { generateEmbedding, generateChatResponseSync } from "@/lib/gemini"
 import { queryVectors } from "@/lib/pinecone"
-import { supabaseAdmin } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export async function POST(request: NextRequest, { params }: { params: { botId: string } }) {
   try {

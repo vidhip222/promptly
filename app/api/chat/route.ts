@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { generateChatResponse } from "@/lib/gemini"
-import { supabaseAdmin } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 import type { Part } from "@/types/gemini" // Declare the Part variable
 
 export async function POST(request: NextRequest) {

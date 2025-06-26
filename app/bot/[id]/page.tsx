@@ -24,7 +24,7 @@ import {
   RefreshCw,
 } from "lucide-react" // Added RefreshCw icon
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { supabase } from "@/lib/supabase-client"
 import { useRouter } from "next/navigation"
 
 interface BotData {
