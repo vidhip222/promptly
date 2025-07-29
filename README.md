@@ -28,7 +28,9 @@ Promptly is a no-code platform for building **custom AI chatbots** for specific 
 - 🔍 Retrieve answers based on your company's real data
 - 🔗 Deploy via shareable link, Slack, or website widget
 - 🧠 Powered by Gemini 2.0 + semantic search
-
+- 🌐 Web Crawler Support
+- 🧩 Templates
+- 🎭 Custom Personalities & Tone
 ---
 
 ## 🧑‍💻 Local Setup Instructions
