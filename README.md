@@ -13,7 +13,7 @@ Promptly is a no-code platform for building **custom AI chatbots** for specific 
 | LLMs          | Gemini Chat & Assistants API           |
 | Embeddings    | Gemini `2.0 Flash`        |
 | Vector DB     | Pinecone (semantic search)             |
-| File Parsing  | LangChain, PyMuPDF, docx, Unstructured |
+| File Parsing  | LangChain, Pdf-Parse, Mammoth, Unstructured |
 | Auth          | Supabase Auth            |
 | Storage       | Supabase Storage               |
 | Database      | PostgreSQL (via Supabase)   |
